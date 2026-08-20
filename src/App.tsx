@@ -3,11 +3,12 @@ import { Header } from './components/Header';
 import { DAGCanvas } from './components/DAGCanvas';
 import { VectorExplorer } from './components/VectorExplorer';
 import { AgentMeshDashboard } from './components/AgentMeshDashboard';
+import { EvaluationDashboard } from './components/EvaluationDashboard';
 import { ArchitectureBlueprint } from './components/ArchitectureBlueprint';
 import { dagRunner } from './engine/dagOrchestrator';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'CANVAS' | 'VECTOR DB' | 'AGENT MESH' | 'BLUEPRINT'>('CANVAS');
+  const [activeTab, setActiveTab] = useState<'CANVAS' | 'VECTOR DB' | 'AGENT MESH' | 'EVALUATION' | 'BLUEPRINT'>('CANVAS');
   const [telemetryCount, setTelemetryCount] = useState<number>(3);
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export function App() {
         {activeTab === 'CANVAS' && <DAGCanvas />}
         {activeTab === 'VECTOR DB' && <VectorExplorer />}
         {activeTab === 'AGENT MESH' && <AgentMeshDashboard />}
+        {activeTab === 'EVALUATION' && <EvaluationDashboard />}
         {activeTab === 'BLUEPRINT' && <ArchitectureBlueprint />}
       </main>
 
