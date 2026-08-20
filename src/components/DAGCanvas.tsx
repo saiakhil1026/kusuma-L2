@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Play, RotateCcw, Network, Zap, CheckCircle2, Clock, Cpu, Upload, Database, X } from 'lucide-react';
+import { Play, RotateCcw, Network, Zap, CheckCircle2, Cpu, Upload, Database, X, ShieldCheck, Sparkles, CheckSquare } from 'lucide-react';
 import type { DAGGraph, DAGNode } from '../types';
 import { PRESET_OBJECTIVES, createGraphForObjective, dagRunner } from '../engine/dagOrchestrator';
 import { INITIAL_AGENTS } from '../engine/agentRegistry';
 import { sharedVectorDB } from '../engine/vectorStore';
+import { dynamicAgentRunner } from '../engine/agentLoop';
+import type { AgentLoopExecutionResult } from '../engine/agentLoop';
 
 export const DAGCanvas: React.FC = () => {
   const [objectiveInput, setObjectiveInput] = useState(PRESET_OBJECTIVES[0].objective);
@@ -12,6 +14,10 @@ export const DAGCanvas: React.FC = () => {
   const [selectedPresetId, setSelectedPresetId] = useState(PRESET_OBJECTIVES[0].id);
   const [sampleImagePayload, setSampleImagePayload] = useState<string | undefined>(undefined);
   const [isExecuting, setIsExecuting] = useState(false);
+
+  // New Mode: Dynamic MCP Tool Choice Action Loop
+  const [executionMode, setExecutionMode] = useState<'mcp_loop' | 'dag_topology'>('mcp_loop');
+  const [loopResult, setLoopResult] = useState<AgentLoopExecutionResult | null>(null);
 
   useEffect(() => {
     const initialGraph = createGraphForObjective(objectiveInput);
@@ -42,6 +48,7 @@ export const DAGCanvas: React.FC = () => {
       const newGraph = createGraphForObjective(preset.objective);
       dagRunner.setGraph(newGraph);
       setSelectedNode(null);
+      setLoopResult(null);
     }
   };
 
@@ -50,16 +57,29 @@ export const DAGCanvas: React.FC = () => {
     const newGraph = createGraphForObjective(objectiveInput.trim());
     dagRunner.setGraph(newGraph);
     setSelectedNode(null);
+    setLoopResult(null);
   };
 
   const handleRunExecution = async () => {
-    if (!graph || isExecuting) return;
-    await dagRunner.executeGraph(sampleImagePayload);
+    if (isExecuting) return;
+    setIsExecuting(true);
+
+    if (executionMode === 'mcp_loop') {
+      const res = await dynamicAgentRunner.runDynamicLoop(objectiveInput);
+      setLoopResult(res);
+      setIsExecuting(false);
+    } else {
+      if (graph) {
+        await dagRunner.executeGraph(sampleImagePayload);
+      }
+      setIsExecuting(false);
+    }
   };
 
   const handleResetGraph = () => {
     dagRunner.resetCurrentGraph();
     setSelectedNode(null);
+    setLoopResult(null);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,25 +128,48 @@ export const DAGCanvas: React.FC = () => {
             </div>
             <div>
               <h2 className="font-mono text-base font-bold text-white flex items-center space-x-2">
-                <span>DAG Task Graph Orchestrator</span>
-                <span className="rounded-md bg-indigo-950 px-2 py-0.5 text-[10px] text-indigo-300 border border-indigo-500/30">
-                  Model Multiplexed
+                <span>Agent Orchestration Canvas</span>
+                <span className="rounded-md bg-cyan-950 px-2 py-0.5 text-[10px] text-cyan-300 border border-cyan-500/30">
+                  MCP Tool Discovery
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Decomposes complex objectives into dependency-linked DAG sub-tasks executed concurrently across specialized agents.
+                Dynamic LLM tool choice loop (`decide` $\rightarrow$ `MCP tool` $\rightarrow$ `observation` $\rightarrow$ `reflection pass`).
               </p>
             </div>
           </div>
 
-          {/* Preset Selector Dropdown */}
-          <div className="flex items-center space-x-2 font-mono text-xs">
-            <span className="text-slate-400 hidden sm:inline">Presets:</span>
+          {/* Mode & Preset Controls */}
+          <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+            {/* Mode Switcher */}
+            <div className="flex items-center rounded-xl bg-nexus-900 p-1 border border-indigo-500/30">
+              <button
+                onClick={() => setExecutionMode('mcp_loop')}
+                className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${
+                  executionMode === 'mcp_loop'
+                    ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Dynamic MCP Loop
+              </button>
+              <button
+                onClick={() => setExecutionMode('dag_topology')}
+                className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${
+                  executionMode === 'dag_topology'
+                    ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                DAG Topology
+              </button>
+            </div>
+
             <select
               value={selectedPresetId}
               onChange={(e) => handleSelectPreset(e.target.value)}
               disabled={isExecuting}
-              className="rounded-xl border border-indigo-500/30 bg-nexus-900 px-3 py-2 text-cyan-300 text-xs focus:border-cyan-400 focus:outline-none"
+              className="rounded-xl border border-indigo-500/30 bg-nexus-900 px-3 py-1.5 text-cyan-300 text-xs focus:border-cyan-400 focus:outline-none"
             >
               {PRESET_OBJECTIVES.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -156,12 +199,12 @@ export const DAGCanvas: React.FC = () => {
               disabled={isExecuting}
               className="rounded-xl border border-indigo-700/50 bg-indigo-950 px-3.5 py-2.5 text-xs font-mono text-indigo-200 hover:bg-indigo-900 transition-colors"
             >
-              Decompose Objective
+              Set Objective
             </button>
 
             <button
               onClick={handleRunExecution}
-              disabled={isExecuting || !graph}
+              disabled={isExecuting}
               className={`flex items-center space-x-2 rounded-xl px-5 py-2.5 text-xs font-semibold text-white shadow-lg transition-all ${
                 isExecuting
                   ? 'bg-cyan-700 opacity-60 cursor-not-allowed'
@@ -171,12 +214,12 @@ export const DAGCanvas: React.FC = () => {
               {isExecuting ? (
                 <>
                   <Zap className="h-4 w-4 text-cyan-300 animate-spin" />
-                  <span>Orchestrating DAG...</span>
+                  <span>Executing Agent...</span>
                 </>
               ) : (
                 <>
                   <Play className="h-4 w-4 fill-white" />
-                  <span>Execute Graph</span>
+                  <span>Run Execution</span>
                 </>
               )}
             </button>
@@ -210,29 +253,134 @@ export const DAGCanvas: React.FC = () => {
               </button>
             )}
           </div>
-
-          {/* Graph Execution Metrics */}
-          {graph && (
-            <div className="flex items-center space-x-4 font-mono text-xs text-slate-300">
-              <div className="flex items-center space-x-1">
-                <Clock className="h-3.5 w-3.5 text-cyan-400" />
-                <span>{graph.totalLatencyMs} ms</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <Cpu className="h-3.5 w-3.5 text-indigo-400" />
-                <span>{graph.totalTokens} Tokens</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <Zap className="h-3.5 w-3.5 text-emerald-400" />
-                <span className="text-emerald-300">{graph.cacheHits} Cache Hits</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
+      {/* Dynamic MCP Action Loop View */}
+      {executionMode === 'mcp_loop' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Action Loop Steps Stream (8 cols) */}
+          <div className="lg:col-span-8 rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl space-y-4 tech-grid-pattern">
+            <div className="flex items-center justify-between border-b border-indigo-950 pb-3">
+              <div className="flex items-center space-x-2">
+                <Sparkles className="h-4 w-4 text-cyan-400" />
+                <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Dynamic MCP Model Tool Choice Action Stream
+                </h3>
+              </div>
+              <span className="font-mono text-xs text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded bg-indigo-950">
+                5 Registered MCP Tools
+              </span>
+            </div>
+
+            {loopResult ? (
+              <div className="space-y-4">
+                {loopResult.steps.map((step) => (
+                  <div
+                    key={step.stepIndex}
+                    className="rounded-xl border border-indigo-900/60 bg-nexus-900/90 p-4 space-y-2 hover:border-cyan-500/40 transition-colors"
+                  >
+                    <div className="flex items-center justify-between font-mono text-xs">
+                      <div className="flex items-center space-x-2">
+                        <span className="rounded bg-cyan-950 px-2 py-0.5 text-cyan-300 font-bold border border-cyan-500/30">
+                          Step #{step.stepIndex}
+                        </span>
+                        {step.toolName && (
+                          <span className="rounded bg-purple-950 px-2 py-0.5 text-purple-300 font-bold border border-purple-500/30">
+                            Tool: {step.toolName}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-slate-400">{step.latencyMs} ms</span>
+                    </div>
+
+                    <p className="text-xs text-slate-200 leading-relaxed font-sans">
+                      💡 <strong>Thought:</strong> {step.thought}
+                    </p>
+
+                    {step.observation && (
+                      <div className="space-y-1 pt-1">
+                        <span className="font-mono text-[10px] text-cyan-400 uppercase tracking-widest block">
+                          Captured Observation Result
+                        </span>
+                        <div className="rounded-lg border border-indigo-950 bg-nexus-950 p-3 font-mono text-[11px] text-slate-300 max-h-36 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                          {step.observation}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Final Grounded Deliverable Payload */}
+                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="font-bold text-emerald-400 flex items-center space-x-1.5">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Consolidated Grounded Output</span>
+                    </span>
+                    <span className="text-emerald-300 font-bold">
+                      {loopResult.totalLatencyMs} ms | {loopResult.totalTokens} Tokens
+                    </span>
+                  </div>
+                  <div className="rounded-lg border border-emerald-950 bg-nexus-950 p-3 font-mono text-xs text-slate-200 whitespace-pre-wrap leading-relaxed">
+                    {loopResult.finalAnswer}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center text-slate-500 space-y-3 font-mono text-xs">
+                <Cpu className="h-10 w-10 text-slate-700 animate-pulse" />
+                <p>Click "Run Execution" above to trigger the dynamic MCP tool choice loop.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Reflection Audit Inspector (4 cols) */}
+          <div className="lg:col-span-4 rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl space-y-4">
+            <div className="flex items-center space-x-2 border-b border-indigo-950 pb-3">
+              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+              <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-slate-300">
+                Evidence Reflection Audit Pass
+              </h3>
+            </div>
+
+            {loopResult?.reflectionVerdict ? (
+              <div className="space-y-3 font-mono text-xs">
+                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-300 flex items-center space-x-1">
+                      <CheckSquare className="h-4 w-4" />
+                      <span>Audit Verdict: PASSED</span>
+                    </span>
+                    <span className="text-emerald-300 font-bold">
+                      {(loopResult.reflectionVerdict.confidence * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 font-sans leading-relaxed">
+                    {loopResult.reflectionVerdict.auditNotes}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase">Observation Ledger Size</span>
+                  <div className="rounded-lg bg-nexus-900 p-2.5 text-cyan-300 font-bold">
+                    {loopResult.observations.length} Captured MCP Tool Call Observations
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-slate-500 font-mono text-xs">
+                Reflection verification audit results will appear here after loop execution.
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+
       {/* DAG Graph Interactive Visualizer */}
-      {graph && (
+      {executionMode === 'dag_topology' && graph && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Main Visual Topology Canvas */}

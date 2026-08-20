@@ -1,8 +1,16 @@
 /**
- * NexusMatrix 768-Dimensional Vector Embedding Generator
- * Generates unit-length normalized 768-D vectors for semantic vector DB ops & similarity queries.
+ * NexusMatrix 768-Dimensional Vector Embedding Engine
+ * Supported Models:
+ * 1. Google Gemini Cloud Model: "text-embedding-004" (768-dimensional native embeddings via @google/genai)
+ * 2. High-Density Local Model: 768D Deterministic Harmonic Feature Projection Model
  */
 
+import { GoogleGenAI } from '@google/genai';
+import { getGeminiApiKey } from './geminiClient';
+
+/**
+ * Generates a 768-dimensional vector embedding for text.
+ */
 export function generate768DEmbedding(text: string): number[] {
   const DIMENSIONS = 768;
   const vector = new Array(DIMENSIONS).fill(0);
@@ -12,7 +20,7 @@ export function generate768DEmbedding(text: string): number[] {
     return normalizeVector(vector);
   }
 
-  // 1. Character n-gram & word hashing across 768 dimensions
+  // 1. Character n-gram & harmonic frequency hashing across 768 dimensions
   for (let i = 0; i < cleanText.length; i++) {
     const charCode = cleanText.charCodeAt(i);
     const pos1 = (charCode * 31 + i * 17) % DIMENSIONS;
@@ -61,6 +69,29 @@ export function generate768DEmbedding(text: string): number[] {
 }
 
 /**
+ * Async Google Gemini "text-embedding-004" Model Fetcher
+ */
+export async function getGemini768DEmbeddingAsync(text: string): Promise<number[]> {
+  const apiKey = getGeminiApiKey();
+  if (apiKey) {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const response: any = await ai.models.embedContent({
+        model: 'text-embedding-004',
+        contents: text,
+      });
+      const values = response.embedding?.values || response.embeddings?.[0]?.values;
+      if (values && values.length === 768) {
+        return normalizeVector(values);
+      }
+    } catch (err) {
+      console.warn('Gemini text-embedding-004 fetch note, using local 768D engine:', err);
+    }
+  }
+  return generate768DEmbedding(text);
+}
+
+/**
  * L2 Normalization so dot product equals Cosine Similarity
  */
 export function normalizeVector(vec: number[]): number[] {
@@ -94,7 +125,6 @@ export function calculateCosineSimilarity(vecA: number[], vecB: number[]): numbe
   const denominator = Math.sqrt(normA) * Math.sqrt(normB);
   if (denominator === 0) return 0;
   
-  // Bound strictly between -1 and 1
   const similarity = dotProduct / denominator;
   return Math.min(1.0, Math.max(-1.0, similarity));
 }
@@ -105,7 +135,6 @@ export function calculateCosineSimilarity(vecA: number[], vecB: number[]): numbe
 export function projectTo2DSpace(vec: number[]): [number, number] {
   if (vec.length < 768) return [0, 0];
 
-  // Project using first 384 vs second 384 weighted harmonic frequencies
   let xSum = 0;
   let ySum = 0;
 
@@ -118,7 +147,6 @@ export function projectTo2DSpace(vec: number[]): [number, number] {
     ySum += vec[i] * Math.cos(((i - 384) * Math.PI) / 192);
   }
 
-  // Scale into [-0.85, 0.85] bounds
   const x = Math.max(-0.85, Math.min(0.85, xSum * 1.5));
   const y = Math.max(-0.85, Math.min(0.85, ySum * 1.5));
 

@@ -6,6 +6,9 @@ import { semanticCache } from '../src/engine/semanticCache';
 import { INITIAL_AGENTS } from '../src/engine/agentRegistry';
 import { executeAgentInference } from '../src/engine/geminiClient';
 import { createGraphForObjective } from '../src/engine/dagOrchestrator';
+import { mcpServer } from '../src/mcp/mcpServer';
+import { mcpClient } from '../src/mcp/mcpClient';
+import { dynamicAgentRunner } from '../src/engine/agentLoop';
 
 dotenv.config();
 
@@ -20,11 +23,43 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'online',
     framework: 'NexusMatrix Enterprise Multi-Modal Agent Orchestrator',
+    mcpToolsCount: mcpServer.listTools().length,
     vectorCount: sharedVectorDB.size(),
     models: ['gemini-3.7-flash', 'gemini-3.1-pro-preview'],
     cacheHitRatioPct: semanticCache.getCacheHitRatio(),
     timestamp: Date.now(),
   });
+});
+
+// MCP Tools Discovery API
+app.get('/api/mcp/tools', (req, res) => {
+  res.json(mcpServer.listTools());
+});
+
+// MCP Tool Execution API
+app.post('/api/mcp/call', async (req, res) => {
+  const { toolName, arguments: toolArgs } = req.body;
+  if (!toolName) {
+    return res.status(400).json({ error: 'toolName required' });
+  }
+
+  const result = await mcpClient.invokeTool(toolName, toolArgs || {});
+  res.json(result);
+});
+
+// Dynamic Agent Decision Loop & Reflection API
+app.post('/api/agent-loop/run', async (req, res) => {
+  const { objective, model } = req.body;
+  if (!objective) {
+    return res.status(400).json({ error: 'Objective required' });
+  }
+
+  try {
+    const result = await dynamicAgentRunner.runDynamicLoop(objective, model || 'gemini-3.7-flash');
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Dynamic agent loop failed' });
+  }
 });
 
 // Agent Registry API
@@ -82,5 +117,5 @@ app.post('/api/orchestrate/decompose', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`⚡ NexusMatrix Backend Server running on http://localhost:${PORT}`);
+  console.log(`⚡ NexusMatrix Master Server running on http://localhost:${PORT}`);
 });
