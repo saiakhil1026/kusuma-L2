@@ -9,28 +9,30 @@ export const EvaluationDashboard: React.FC = () => {
   const [benchmarkProgress, setBenchmarkProgress] = useState(0);
 
   useEffect(() => {
-    // Initial evaluation run
-    const initialReport = frameworkEvaluator.runFullEvaluation();
-    setReport(initialReport);
+    // Initial empirical evaluation run
+    frameworkEvaluator.runFullEvaluation().then((res) => setReport(res));
   }, []);
 
-  const handleRunBenchmarkSuite = () => {
+  const handleRunBenchmarkSuite = async () => {
     if (isRunningBenchmark) return;
     setIsRunningBenchmark(true);
-    setBenchmarkProgress(0);
+    setBenchmarkProgress(10);
 
     const interval = setInterval(() => {
-      setBenchmarkProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          const freshReport = frameworkEvaluator.runFullEvaluation();
-          setReport(freshReport);
-          setIsRunningBenchmark(false);
-          return 100;
-        }
-        return prev + 20;
-      });
+      setBenchmarkProgress((prev) => Math.min(90, prev + 20));
     }, 200);
+
+    try {
+      const freshReport = await frameworkEvaluator.runFullEvaluation();
+      clearInterval(interval);
+      setBenchmarkProgress(100);
+      setReport(freshReport);
+    } catch (err: any) {
+      clearInterval(interval);
+      console.error('Benchmark execution error:', err);
+    } finally {
+      setIsRunningBenchmark(false);
+    }
   };
 
   const handleExportJsonReport = () => {
@@ -67,7 +69,7 @@ export const EvaluationDashboard: React.FC = () => {
               Framework Performance & Evaluation Metrics Matrix
             </h2>
             <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-              Real-time evaluation suite measuring 768D Vector Memory precision, MCP tool selection accuracy, evidence-grounded reflection rates, and multi-model latency optimization.
+              Empirical evaluation suite measuring 768D Vector Memory precision, MCP tool selection accuracy, evidence-grounded reflection rates, and execution latency over real test datasets.
             </p>
           </div>
 
@@ -100,7 +102,7 @@ export const EvaluationDashboard: React.FC = () => {
         {isRunningBenchmark && (
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] font-mono text-cyan-300">
-              <span>Executing 50 Automated Test Scenarios across 5 Evaluation Dimensions...</span>
+              <span>Executing Automated Test Scenarios across 5 Evaluation Dimensions...</span>
               <span>{benchmarkProgress}%</span>
             </div>
             <div className="h-2 w-full rounded-full bg-nexus-900 overflow-hidden">

@@ -1,28 +1,27 @@
 import { GoogleGenAI } from '@google/genai';
 import type { ModelName, AgentId } from '../types';
 
-let apiKey: string = import.meta.env.VITE_GEMINI_API_KEY || '';
-
 export function setGeminiApiKey(key: string) {
-  apiKey = key;
-  if (key) {
-    localStorage.setItem('nexus_gemini_api_key', key);
-  } else {
-    localStorage.removeItem('nexus_gemini_api_key');
+  if (typeof process !== 'undefined' && process.env) {
+    process.env.GEMINI_API_KEY = key;
   }
 }
 
 export function getGeminiApiKey(): string {
-  return (
-    apiKey ||
-    localStorage.getItem('nexus_gemini_api_key') ||
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    ''
-  );
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+    if (process.env.VITE_GEMINI_API_KEY) return process.env.VITE_GEMINI_API_KEY;
+  }
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) {
+      return import.meta.env.VITE_GEMINI_API_KEY;
+    }
+  } catch {}
+  return '';
 }
 
 export async function executeAgentInference(
-  agentId: AgentId,
+  _agentId: AgentId,
   model: ModelName,
   prompt: string,
   extraContext?: string,
@@ -31,10 +30,12 @@ export async function executeAgentInference(
   const activeKey = getGeminiApiKey();
   const startTime = performance.now();
 
-  if (activeKey) {
+  const isTestEnv = typeof process !== 'undefined' && (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
+
+  if (activeKey && !isTestEnv) {
     try {
       const ai = new GoogleGenAI({ apiKey: activeKey });
-      
+
       const parts: any[] = [{ text: prompt }];
       if (extraContext) {
         parts.unshift({ text: `[Prerequisite Memory Context]:\n${extraContext}\n\n[Task Prompt]:` });
@@ -46,8 +47,8 @@ export async function executeAgentInference(
         parts.push({
           inlineData: {
             mimeType,
-            data: base64Data
-          }
+            data: base64Data,
+          },
         });
       }
 
@@ -62,48 +63,132 @@ export async function executeAgentInference(
 
       return { text, tokens, latencyMs, isRealApi: true };
     } catch (err: any) {
-      console.warn('Real Gemini API call failed or rate limited, falling back to simulated inference engine:', err);
+      throw new Error(`Live Gemini API Execution Failed: ${err.message || String(err)}`);
     }
   }
 
-  // Simulated High-Fidelity Agent Engine
-  await new Promise((res) => setTimeout(res, 200 + Math.random() * 300));
+  // Local model decision driver for deterministic offline test suites and unconfigured API keys
   const latencyMs = Math.round(performance.now() - startTime);
+  const text = generateDynamicModelDecisionText(prompt);
+  const tokens = Math.floor(text.length / 3.5);
 
-  let simulatedOutput = '';
-  switch (agentId) {
-    case 'orchestrator':
-      simulatedOutput = `Decomposed objective into 4 dependency-linked DAG nodes targeting Gemini 3.7 Flash & 3.1 Pro Preview:\n1. [Text Summarizer] Compress context payload\n2. [Vision Captioner] Analyze visual spatial diagrams\n3. [Code Assistant] Synthesize production TypeScript handler\n4. [Deep Logic] Audit vector space complexity`;
-      break;
+  return { text, tokens, latencyMs, isRealApi: false };
+}
 
-    case 'summarizer':
-      simulatedOutput = `High-Density Compression Summary (Compression Ratio: 4.2x):\n- Deconstructed prompt into core vector directives.\n- Identified 3 critical state dependencies.\n- Filtered token redundancy by 76.2%.`;
-      break;
+function generateDynamicModelDecisionText(prompt: string): string {
+  // Extract objective text specifically to prevent matching tool descriptions in system prompt
+  const objMatch = prompt.match(/\[Objective\]:\s*([\s\S]*?)(?=\n\[|$)/i);
+  const objText = objMatch ? objMatch[1] : prompt;
+  const lowerObj = objText.toLowerCase();
 
-    case 'vision':
-      simulatedOutput = `Visual Bounding Tags & Diagram Analytics:\n- Element 1: [0.12, 0.25, 0.45, 0.88] "Master Orchestrator Node"\n- Element 2: [0.50, 0.10, 0.85, 0.45] "768D Vector DB Memory Store"\n- Spatial Layout: Distributed Directed Acyclic Graph topology detected with 99.1% visual confidence.`;
-      break;
+  const hasVectorObs = prompt.includes('"toolName": "vector_search"');
+  const hasRefactorObs = prompt.includes('"toolName": "refactor_code"');
+  const hasAuditObs = prompt.includes('"toolName": "zero_trust_audit"');
+  const hasVisionObs = prompt.includes('"toolName": "parse_vision_tags"');
+  const hasErrorObs = prompt.includes('isError": true') || prompt.includes('[ERROR]');
 
-    case 'code':
-      simulatedOutput = `\`\`\`typescript\n// Synthesized by Code Assistant (gemini-3.1-pro-preview)\nimport { sharedVectorDB } from './vectorStore';\n\nexport async function processTaskPipeline(input: string): Promise<string> {\n  const vector = sharedVectorDB.addVector(input, 'code', 'Code Assistant Agent', 'code');\n  return \`Executed pipeline task with vector ID: \${vector.id}\`;\n}\n\`\`\``;
-      break;
-
-    case 'logic':
-      simulatedOutput = `Mathematical Proof & Architecture Tradeoff Audit:\n$$\\text{Similarity}(A, B) = \\frac{\\sum A_i B_i}{\\sqrt{\\sum A_i^2} \\sqrt{\\sum B_i^2}}$$\n- Evaluated 768-dimensional inner product space.\n- Verified Cosine Distance $d = 1 - S \\le 0.12$ guaranteeing zero semantic drift across multi-agent hops.`;
-      break;
-
-    case 'guardrail':
-      simulatedOutput = `Zero-Trust Safety & Schema Validation Report:\n- Schema Integrity: PASSED (100% type compliant)\n- Security Audit: REJECTED 0 injection vectors\n- Memory Bounds: PASSED (Within 768D vector embedding limits)`;
-      break;
-
-    case 'synthesizer':
-      simulatedOutput = `Consolidated Executive Synthesis Report:\n- Objective fulfilled across 6 multi-modal agent hops.\n- In-Memory Semantic Cache Hits: 2 (Bypassed LLM inference in 0.4ms).\n- Aggregate Deliverable: Multi-modal code, spatial tags, and logic verification merged into production payload.`;
-      break;
-
-    default:
-      simulatedOutput = `Agent ${agentId} executed task successfully: ${prompt}`;
+  if (hasErrorObs && !hasAuditObs) {
+    return JSON.stringify({
+      type: 'tool_call',
+      tool: 'zero_trust_audit',
+      arguments: {
+        payloadToAudit: 'export class SecurityCheck { sanitize() { return true; } }',
+      },
+    });
   }
 
-  const tokens = Math.floor(simulatedOutput.length / 3.5);
-  return { text: simulatedOutput, tokens, latencyMs, isRealApi: false };
+  // Objective-driven tool selection rules
+  if (lowerObj.includes('search') || lowerObj.includes('vector') || lowerObj.includes('memory') || lowerObj.includes('context')) {
+    if (!hasVectorObs) {
+      return JSON.stringify({
+        type: 'tool_call',
+        tool: 'vector_search',
+        arguments: {
+          query: extractSearchQuery(objText),
+          topK: 3,
+        },
+      });
+    }
+    return JSON.stringify({
+      type: 'finish',
+      answer: 'Retrieved 768D vector similarity context memory.',
+    });
+  }
+
+  if (lowerObj.includes('audit') || lowerObj.includes('security') || lowerObj.includes('zero_trust') || lowerObj.includes('safe') || lowerObj.includes('unsafe')) {
+    if (!hasAuditObs) {
+      return JSON.stringify({
+        type: 'tool_call',
+        tool: 'zero_trust_audit',
+        arguments: {
+          payloadToAudit: extractPayloadForAudit(objText),
+        },
+      });
+    }
+    return JSON.stringify({
+      type: 'finish',
+      answer: 'Completed zero-trust safety audit and schema validation check.',
+    });
+  }
+
+  if (lowerObj.includes('vision') || lowerObj.includes('diagram') || lowerObj.includes('wireframe')) {
+    if (!hasVisionObs) {
+      return JSON.stringify({
+        type: 'tool_call',
+        tool: 'parse_vision_tags',
+        arguments: {
+          imagePrompt: objText.substring(0, 100),
+        },
+      });
+    }
+    return JSON.stringify({
+      type: 'finish',
+      answer: 'Completed vision spatial diagram analytics.',
+    });
+  }
+
+  if (lowerObj.includes('code') || lowerObj.includes('refactor') || lowerObj.includes('typescript') || lowerObj.includes('python')) {
+    if (!hasRefactorObs) {
+      return JSON.stringify({
+        type: 'tool_call',
+        tool: 'refactor_code',
+        arguments: {
+          codeRequirement: objText.substring(0, 120),
+          language: lowerObj.includes('python') ? 'python' : 'typescript',
+        },
+      });
+    }
+    return JSON.stringify({
+      type: 'finish',
+      answer: 'Synthesized type-safe code implementation matching requirement.',
+    });
+  }
+
+  // Fallback for general objectives
+  if (!hasVectorObs) {
+    return JSON.stringify({
+      type: 'tool_call',
+      tool: 'vector_search',
+      arguments: {
+        query: extractSearchQuery(objText),
+        topK: 3,
+      },
+    });
+  }
+
+  return JSON.stringify({
+    type: 'finish',
+    answer: `Completed objective after evidence gathering. Verified context search, refactoring requirements, and zero-trust audit compliance.`,
+  });
+}
+
+function extractSearchQuery(objText: string): string {
+  return objText.substring(0, 60).trim();
+}
+
+function extractPayloadForAudit(objText: string): string {
+  if (objText.includes('export ') || objText.includes('const ') || objText.includes('function ')) {
+    return objText.trim();
+  }
+  return `export function validateInput(val: string): boolean { return val.length > 0; }`;
 }
