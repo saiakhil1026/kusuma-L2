@@ -2,6 +2,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { server } from './nexusMcpServer';
 
+export interface McpToolCallResult {
+  toolName: string;
+  isError: boolean;
+  content: string;
+}
+
 export class NexusMcpSDKClient {
   private client: Client;
   private isConnected = false;
@@ -28,7 +34,7 @@ export class NexusMcpSDKClient {
     return response.tools;
   }
 
-  public async callTool(name: string, args: Record<string, any>) {
+  public async callTool(name: string, args: Record<string, any>): Promise<McpToolCallResult> {
     await this.connectIfNeeded();
     try {
       const response = await this.client.callTool({
@@ -36,7 +42,7 @@ export class NexusMcpSDKClient {
         arguments: args,
       });
 
-      const isError = response.isError ?? false;
+      const isError: boolean = Boolean(response.isError);
       const textContent = Array.isArray(response.content)
         ? response.content.map((c: any) => (c.type === 'text' ? c.text : JSON.stringify(c))).join('\n')
         : String(response.content ?? '');

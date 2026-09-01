@@ -1,12 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { dynamicAgentRunner } from '../engine/agentLoop';
 
-describe('Dynamic Model-Mediated Agent Loop Test Suite', () => {
+describe('Dynamic Model-Mediated Agent Loop Test Suite (Gates 2, 4, 14)', () => {
+  it('should record explicit execution decision provenance metadata', async () => {
+    const result = await dynamicAgentRunner.runDynamicLoop(
+      'Search 768D vector space for zero-trust security architecture context memory',
+      { model: 'gemini-3.7-flash', maxSteps: 4 }
+    );
+
+    expect(result.decisionSource).toBe('offline_driver');
+    expect(result.provider).toBe('offline');
+    expect(result.isLive).toBe(false);
+    expect(result.modelTarget).toBe('gemini-3.7-flash');
+    expect(result.providerRequestId).toBeDefined();
+    expect(result.timestamp).toBeDefined();
+  });
+
   it('should dynamically select vector_search tool for vector context objectives', async () => {
     const result = await dynamicAgentRunner.runDynamicLoop(
       'Search 768D vector space for zero-trust security architecture context memory',
-      'gemini-3.7-flash',
-      4
+      { model: 'gemini-3.7-flash', maxSteps: 4 }
     );
 
     expect(result.status).toBe('completed');
@@ -18,8 +31,7 @@ describe('Dynamic Model-Mediated Agent Loop Test Suite', () => {
   it('should dynamically select refactor_code tool for code refactoring objectives', async () => {
     const result = await dynamicAgentRunner.runDynamicLoop(
       'Refactor TypeScript function converting legacy var declarations to const with async await',
-      'gemini-3.7-flash',
-      4
+      { model: 'gemini-3.7-flash', maxSteps: 4 }
     );
 
     expect(result.status).toBe('completed');
@@ -30,8 +42,7 @@ describe('Dynamic Model-Mediated Agent Loop Test Suite', () => {
   it('should dynamically select zero_trust_audit tool for security checking objectives', async () => {
     const result = await dynamicAgentRunner.runDynamicLoop(
       'Audit safety of code payload: export function add(a: number, b: number): number { return a + b; }',
-      'gemini-3.7-flash',
-      4
+      { model: 'gemini-3.7-flash', maxSteps: 4 }
     );
 
     expect(result.status).toBe('completed');
@@ -40,8 +51,8 @@ describe('Dynamic Model-Mediated Agent Loop Test Suite', () => {
   });
 
   it('should select different tool sequences for different objectives', async () => {
-    const resVector = await dynamicAgentRunner.runDynamicLoop('Find vector memory embeddings', 'gemini-3.7-flash', 3);
-    const resVision = await dynamicAgentRunner.runDynamicLoop('Analyze visual spatial scene diagram for DAG', 'gemini-3.7-flash', 3);
+    const resVector = await dynamicAgentRunner.runDynamicLoop('Find vector memory embeddings', { maxSteps: 3 });
+    const resVision = await dynamicAgentRunner.runDynamicLoop('Analyze visual spatial scene diagram for DAG', { maxSteps: 3 });
 
     const toolsVector = resVector.steps.map((s) => s.toolName).filter(Boolean);
     const toolsVision = resVision.steps.map((s) => s.toolName).filter(Boolean);
@@ -53,29 +64,30 @@ describe('Dynamic Model-Mediated Agent Loop Test Suite', () => {
   it('should terminate with failure state when max steps limit is exceeded', async () => {
     const result = await dynamicAgentRunner.runDynamicLoop(
       'Complex multi-hop objective requiring deep reasoning',
-      'gemini-3.7-flash',
-      1 // maxSteps = 1 forces max steps exceeded before finish
+      { maxSteps: 1 } // maxSteps = 1 forces max steps exceeded before finish
     );
 
     expect(result.status).toBe('failed');
     expect(result.finalAnswer).toContain('max limit');
   });
 
-  it('should handle tool errors gracefully and record error observation into ledger', async () => {
+  it('should handle request cancellation via AbortSignal', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
     const result = await dynamicAgentRunner.runDynamicLoop(
-      'Run zero trust audit on empty payload',
-      'gemini-3.7-flash',
-      4
+      'Search vector database context',
+      { signal: controller.signal }
     );
 
-    expect(result.observations).toBeDefined();
+    expect(result.status).toBe('failed');
+    expect(result.finalAnswer).toContain('CANCELLED');
   });
 
-  it('should automatically generate an execution trace file', async () => {
+  it('should automatically generate an execution trace file with complete provenance', async () => {
     const result = await dynamicAgentRunner.runDynamicLoop(
       'Generate execution trace test objective',
-      'gemini-3.7-flash',
-      3
+      { maxSteps: 3 }
     );
 
     expect(result.tracePath).toBeDefined();

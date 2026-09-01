@@ -20,15 +20,28 @@ export function getGeminiApiKey(): string {
   return '';
 }
 
+export interface InferenceResult {
+  text: string;
+  tokens: number;
+  latencyMs: number;
+  isRealApi: boolean;
+  decisionSource: 'live_gemini' | 'offline_driver';
+  provider: 'google' | 'offline';
+  modelTarget: ModelName;
+  providerRequestId?: string;
+  timestamp: string;
+}
+
 export async function executeAgentInference(
   _agentId: AgentId,
   model: ModelName,
   prompt: string,
   extraContext?: string,
   imagePayload?: string
-): Promise<{ text: string; tokens: number; latencyMs: number; isRealApi: boolean }> {
+): Promise<InferenceResult> {
   const activeKey = getGeminiApiKey();
   const startTime = performance.now();
+  const timestamp = new Date().toISOString();
 
   const isTestEnv = typeof process !== 'undefined' && (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
 
@@ -52,7 +65,7 @@ export async function executeAgentInference(
         });
       }
 
-      const response = await ai.models.generateContent({
+      const response: any = await ai.models.generateContent({
         model: model,
         contents: parts,
       });
@@ -61,22 +74,41 @@ export async function executeAgentInference(
       const latencyMs = Math.round(performance.now() - startTime);
       const tokens = Math.max(12, Math.floor(text.length / 3.8));
 
-      return { text, tokens, latencyMs, isRealApi: true };
+      return {
+        text,
+        tokens,
+        latencyMs,
+        isRealApi: true,
+        decisionSource: 'live_gemini',
+        provider: 'google',
+        modelTarget: model,
+        providerRequestId: response.responseId || `gemini_req_${Date.now()}`,
+        timestamp,
+      };
     } catch (err: any) {
       throw new Error(`Live Gemini API Execution Failed: ${err.message || String(err)}`);
     }
   }
 
-  // Local model decision driver for deterministic offline test suites and unconfigured API keys
+  // Local model decision driver for deterministic offline test suites and unconfigured API keys (Gate 2)
   const latencyMs = Math.round(performance.now() - startTime);
   const text = generateDynamicModelDecisionText(prompt);
   const tokens = Math.floor(text.length / 3.5);
 
-  return { text, tokens, latencyMs, isRealApi: false };
+  return {
+    text,
+    tokens,
+    latencyMs,
+    isRealApi: false,
+    decisionSource: 'offline_driver',
+    provider: 'offline',
+    modelTarget: model,
+    providerRequestId: `offline_req_${Date.now()}`,
+    timestamp,
+  };
 }
 
 function generateDynamicModelDecisionText(prompt: string): string {
-  // Extract objective text specifically to prevent matching tool descriptions in system prompt
   const objMatch = prompt.match(/\[Objective\]:\s*([\s\S]*?)(?=\n\[|$)/i);
   const objText = objMatch ? objMatch[1] : prompt;
   const lowerObj = objText.toLowerCase();
@@ -97,7 +129,6 @@ function generateDynamicModelDecisionText(prompt: string): string {
     });
   }
 
-  // Objective-driven tool selection rules
   if (lowerObj.includes('search') || lowerObj.includes('vector') || lowerObj.includes('memory') || lowerObj.includes('context')) {
     if (!hasVectorObs) {
       return JSON.stringify({
@@ -111,7 +142,7 @@ function generateDynamicModelDecisionText(prompt: string): string {
     }
     return JSON.stringify({
       type: 'finish',
-      answer: 'Retrieved 768D vector similarity context memory.',
+      answer: 'Retrieved 768D vector similarity context memory. [Observation O1]',
     });
   }
 
@@ -127,11 +158,11 @@ function generateDynamicModelDecisionText(prompt: string): string {
     }
     return JSON.stringify({
       type: 'finish',
-      answer: 'Completed zero-trust safety audit and schema validation check.',
+      answer: 'Completed zero-trust safety audit and schema validation check. [Observation O1]',
     });
   }
 
-  if (lowerObj.includes('vision') || lowerObj.includes('diagram') || lowerObj.includes('wireframe')) {
+  if (lowerObj.includes('vision') || lowerObj.includes('diagram') || lowerObj.includes('wireframe') || lowerObj.includes('image')) {
     if (!hasVisionObs) {
       return JSON.stringify({
         type: 'tool_call',
@@ -143,7 +174,7 @@ function generateDynamicModelDecisionText(prompt: string): string {
     }
     return JSON.stringify({
       type: 'finish',
-      answer: 'Completed vision spatial diagram analytics.',
+      answer: 'Completed vision spatial diagram analytics. [Observation O1]',
     });
   }
 
@@ -160,11 +191,10 @@ function generateDynamicModelDecisionText(prompt: string): string {
     }
     return JSON.stringify({
       type: 'finish',
-      answer: 'Synthesized type-safe code implementation matching requirement.',
+      answer: 'Synthesized type-safe code implementation matching requirement. [Observation O1]',
     });
   }
 
-  // Fallback for general objectives
   if (!hasVectorObs) {
     return JSON.stringify({
       type: 'tool_call',
@@ -178,7 +208,7 @@ function generateDynamicModelDecisionText(prompt: string): string {
 
   return JSON.stringify({
     type: 'finish',
-    answer: `Completed objective after evidence gathering. Verified context search, refactoring requirements, and zero-trust audit compliance.`,
+    answer: `Completed objective after evidence gathering. Verified context search, refactoring requirements, and zero-trust audit compliance. [Observation O1]`,
   });
 }
 

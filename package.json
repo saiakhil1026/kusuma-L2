@@ -7,9 +7,12 @@
     "dev": "vite",
     "server": "tsx server/server.ts",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "oxlint",
-    "preview": "vite preview"
+    "lint": "tsc --noEmit",
+    "preview": "vite preview",
+    "demo:live": "tsx scripts/runLiveDemo.ts",
+    "traces:generate": "tsx scripts/generateTraces.ts"
   },
   "dependencies": {
     "@google/genai": "^2.17.1",

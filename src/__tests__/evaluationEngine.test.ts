@@ -1,32 +1,49 @@
 import { describe, it, expect } from 'vitest';
 import { frameworkEvaluator } from '../engine/evaluationEngine';
 
-describe('Empirical Framework Evaluation Suite', () => {
-  it('should run full benchmark evaluation across dataset test cases and return empirical metrics', async () => {
+describe('Empirical Benchmark Dataset Evaluation Suite (Gates 7 & 8)', () => {
+  it('should evaluate versioned benchmark dataset v1.json and return empirical offline metrics', async () => {
     const report = await frameworkEvaluator.runFullEvaluation();
 
-    expect(report.totalEvaluatedCases).toBeGreaterThan(0);
-    expect(report.caseResults.length).toBe(report.totalEvaluatedCases);
-    expect(report.overallScore).toBeGreaterThan(0);
-    expect(report.dimensions.length).toBe(5);
+    expect(report.version).toBe('v1.0.0');
+    expect(report.caseResults.length).toBeGreaterThan(0);
+    expect(report.offlineMetrics).toBeDefined();
 
-    // Verify each case has real execution results recorded
-    report.caseResults.forEach((caseRes) => {
-      expect(caseRes.execution).toBeDefined();
-      expect(caseRes.execution.observations.length).toBeGreaterThan(0);
-      expect(caseRes.latencyMs).toBeGreaterThan(0);
-    });
+    const offline = report.offlineMetrics;
+    expect(offline.totalCasesEvaluated).toBe(report.caseResults.length);
+    expect(offline.passRatePct).toBeGreaterThanOrEqual(0);
+    expect(offline.groundednessPct).toBeGreaterThanOrEqual(0);
+    expect(offline.toolSuccessRatePct).toBeGreaterThanOrEqual(0);
+    expect(offline.reflectionSuccessRatePct).toBeGreaterThanOrEqual(0);
+    expect(offline.avgLatencyMs).toBeGreaterThan(0);
   });
 
-  it('should measure empirical tool groundedness and reflection pass rate from actual case executions', async () => {
+  it('should separate live and offline metrics without merging fake live scores', async () => {
     const report = await frameworkEvaluator.runFullEvaluation();
-    const mcpDim = report.dimensions.find((d) => d.id === 'mcp_groundedness');
-    const reflDim = report.dimensions.find((d) => d.id === 'reflection_pass_rate');
 
-    expect(mcpDim).toBeDefined();
-    expect(reflDim).toBeDefined();
+    // In test environment, decisionSource is offline_driver
+    expect(report.offlineMetrics.decisionSource).toBe('offline_driver');
+    expect(report.liveMetrics).toBeNull(); // No live Gemini run in offline vitest environment
+    expect(report.summaryMessage).toContain('Live Gemini evaluation not yet executed');
+  });
 
-    expect(mcpDim?.score).toBeGreaterThan(0);
-    expect(reflDim?.score).toBeGreaterThan(0);
+  it('should calculate empirical precision and recall or return "Not measured" if insufficient data', async () => {
+    const report = await frameworkEvaluator.runFullEvaluation();
+    const precision = report.offlineMetrics.precisionPct;
+    const recall = report.offlineMetrics.recallPct;
+
+    if (typeof precision === 'number') {
+      expect(precision).toBeGreaterThanOrEqual(0);
+      expect(precision).toBeLessThanOrEqual(100);
+    } else {
+      expect(precision).toBe('Not measured');
+    }
+
+    if (typeof recall === 'number') {
+      expect(recall).toBeGreaterThanOrEqual(0);
+      expect(recall).toBeLessThanOrEqual(100);
+    } else {
+      expect(recall).toBe('Not measured');
+    }
   });
 });

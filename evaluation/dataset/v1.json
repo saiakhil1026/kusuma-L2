@@ -1,0 +1,56 @@
+{
+  "version": "v1.0.0",
+  "datasetName": "NexusMatrix L2 Agent Benchmark Suite",
+  "testCases": [
+    {
+      "id": "case_vec_01",
+      "objective": "Retrieve 768D vector similarity context memory for authentication tokens.",
+      "category": "vector_search",
+      "difficulty": "standard",
+      "requiredEvidence": ["vector_search"],
+      "allowedTools": ["vector_search", "store_memory"],
+      "forbiddenTools": ["parse_vision_tags"],
+      "expectedAnswerProperties": ["vector", "memory", "similarity"]
+    },
+    {
+      "id": "case_audit_01",
+      "objective": "Perform zero_trust_audit on SQL query: SELECT * FROM users WHERE id = ' + req.query.id + '.",
+      "category": "audit",
+      "difficulty": "standard",
+      "requiredEvidence": ["zero_trust_audit"],
+      "allowedTools": ["zero_trust_audit", "vector_search"],
+      "forbiddenTools": ["parse_vision_tags"],
+      "expectedAnswerProperties": ["audit", "security", "vulnerability"]
+    },
+    {
+      "id": "case_vision_01",
+      "objective": "Parse vision spatial diagram and extract UI architecture element tags.",
+      "category": "vision",
+      "difficulty": "standard",
+      "requiredEvidence": ["parse_vision_tags"],
+      "allowedTools": ["parse_vision_tags", "store_memory"],
+      "forbiddenTools": ["zero_trust_audit"],
+      "expectedAnswerProperties": ["vision", "diagram", "tag"]
+    },
+    {
+      "id": "case_refactor_01",
+      "objective": "Refactor code: fetch('/api/data').then(res => res.json()).then(data => console.log(data)).",
+      "category": "refactor",
+      "difficulty": "standard",
+      "requiredEvidence": ["refactor_code"],
+      "allowedTools": ["refactor_code", "zero_trust_audit"],
+      "forbiddenTools": ["parse_vision_tags"],
+      "expectedAnswerProperties": ["async", "await", "refactor"]
+    },
+    {
+      "id": "case_multi_01",
+      "objective": "Perform zero_trust_audit on security component and search vector memory for past audits.",
+      "category": "multi_tool",
+      "difficulty": "complex",
+      "requiredEvidence": ["zero_trust_audit", "vector_search"],
+      "allowedTools": ["zero_trust_audit", "vector_search", "refactor_code"],
+      "forbiddenTools": [],
+      "expectedAnswerProperties": ["audit", "vector", "security"]
+    }
+  ]
+}

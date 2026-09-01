@@ -86,7 +86,10 @@ app.post('/api/mcp/call', async (req, res) => {
 app.post('/api/agent-loop/run', async (req, res) => {
   try {
     const validated = AgentLoopRunSchema.parse(req.body);
-    const result = await dynamicAgentRunner.runDynamicLoop(validated.objective, validated.model, validated.maxSteps);
+    const result = await dynamicAgentRunner.runDynamicLoop(validated.objective, {
+      model: validated.model,
+      maxSteps: validated.maxSteps,
+    });
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Dynamic agent loop failed' });

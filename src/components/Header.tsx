@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Network, Database, Cpu, BookOpen, Key, Activity, Sparkles, CheckCircle2, Award } from 'lucide-react';
-import { getGeminiApiKey, setGeminiApiKey } from '../engine/geminiClient';
+import { Network, Database, Cpu, BookOpen, ShieldCheck, Activity, Award } from 'lucide-react';
 import { semanticCache } from '../engine/semanticCache';
 import { sharedVectorDB } from '../engine/vectorStore';
 
@@ -11,19 +10,12 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemetryCount }) => {
-  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [hasApiKey, setHasApiKey] = useState(false);
   const [stats, setStats] = useState({
     vectorCount: sharedVectorDB.size(),
     cacheHitRatio: semanticCache.getCacheHitRatio(),
   });
 
   useEffect(() => {
-    const key = getGeminiApiKey();
-    setHasApiKey(!!key);
-    setApiKeyInput(key);
-
     const interval = setInterval(() => {
       setStats({
         vectorCount: sharedVectorDB.size(),
@@ -33,12 +25,6 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemet
 
     return () => clearInterval(interval);
   }, []);
-
-  const handleSaveApiKey = () => {
-    setGeminiApiKey(apiKeyInput.trim());
-    setHasApiKey(!!apiKeyInput.trim());
-    setApiKeyModalOpen(false);
-  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-indigo-900/40 bg-nexus-950/80 backdrop-blur-xl">
@@ -61,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemet
               </span>
             </div>
             <p className="text-xs text-slate-400 hidden sm:block">
-              Dynamic DAG Agent Mesh & 768D Semantic Memory Engine
+              Dynamic MCP Agent Mesh & 768D Vector Memory Engine
             </p>
           </div>
         </div>
@@ -88,20 +74,12 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemet
           </div>
         </div>
 
-        {/* Right Navigation & API Key Trigger */}
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setApiKeyModalOpen(true)}
-            className={`flex items-center space-x-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-              hasApiKey
-                ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-900/80'
-                : 'bg-indigo-950/60 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-900/80'
-            }`}
-          >
-            <Key className="h-3.5 w-3.5" />
-            <span>{hasApiKey ? 'API Key Configured' : 'Configure Gemini Key'}</span>
-            {hasApiKey && <CheckCircle2 className="h-3 w-3 text-emerald-400 ml-1" />}
-          </button>
+        {/* Secure Server API Key Management Status (Gate 11) */}
+        <div className="flex items-center space-x-3 font-mono text-xs">
+          <div className="flex items-center space-x-1.5 rounded-lg bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 px-3 py-1.5">
+            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+            <span>Server Environment Keys Active</span>
+          </div>
         </div>
       </div>
 
@@ -112,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemet
             { id: 'CANVAS', label: 'DAG Canvas', icon: Network, badge: null },
             { id: 'VECTOR DB', label: 'Vector DB Explorer', icon: Database, badge: `${stats.vectorCount}` },
             { id: 'AGENT MESH', label: 'Agent Mesh Dashboard', icon: Cpu, badge: telemetryCount > 0 ? `${telemetryCount}` : null },
-            { id: 'EVALUATION', label: 'Evaluation Metrics', icon: Award, badge: '98.4 Score' },
+            { id: 'EVALUATION', label: 'Evaluation Metrics', icon: Award, badge: 'Empirical' },
             { id: 'BLUEPRINT', label: 'Architecture Blueprint', icon: BookOpen, badge: 'Math & Spec' },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -148,58 +126,6 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemet
           })}
         </div>
       </div>
-
-      {/* API Key Modal */}
-      {apiKeyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-          <div className="w-full max-w-md rounded-2xl border border-indigo-500/30 bg-nexus-900 p-6 shadow-2xl">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="rounded-xl bg-cyan-950 p-2.5 border border-cyan-500/40">
-                <Key className="h-5 w-5 text-cyan-400" />
-              </div>
-              <div>
-                <h3 className="font-mono text-base font-bold text-white">Gemini API Key Setup</h3>
-                <p className="text-xs text-slate-400">
-                  Target Models: <span className="text-cyan-300">gemini-3.7-flash</span> & <span className="text-indigo-300">gemini-3.1-pro-preview</span>
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-              NexusMatrix connects directly via the official <code className="text-cyan-300">@google/genai</code> TypeScript SDK. If left blank, the application operates in <strong>Autonomous High-Fidelity Simulation Mode</strong> with full 768D vector calculations and inter-agent telemetry.
-            </p>
-
-            <div className="mb-4">
-              <label className="block text-xs font-mono text-slate-400 mb-1">
-                GEMINI_API_KEY
-              </label>
-              <input
-                type="password"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder="AIzaSy..."
-                className="w-full rounded-xl border border-indigo-500/30 bg-nexus-950 px-3.5 py-2.5 font-mono text-xs text-cyan-200 placeholder-slate-600 focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-              />
-            </div>
-
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setApiKeyModalOpen(false)}
-                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveApiKey}
-                className="flex items-center space-x-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:brightness-110 shadow-lg shadow-cyan-500/25"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                <span>Save Configuration</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 };

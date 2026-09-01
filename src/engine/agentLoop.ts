@@ -1,10 +1,13 @@
+import fs from 'fs';
+import path from 'path';
 import { z } from 'zod';
 import { mcpSDKClient } from '../mcp/nexusMcpClient';
-import { executeAgentInference } from './geminiClient';
+import { executeAgentInference, type InferenceResult } from './geminiClient';
 import { reflectionEngine, type ReflectionVerdict } from './reflectionEngine';
+import { claimGroundingValidator, type GroundedSynthesisResult } from './grounding';
 import type { ModelName } from '../types';
 
-// Runtime Zod Schemas for Model Actions (Priority 4)
+// Runtime Zod Schemas for Model Actions (Gate 4)
 export const ToolCallActionSchema = z.object({
   type: z.literal('tool_call'),
   tool: z.string().min(1, 'Tool name required'),
@@ -44,13 +47,21 @@ export interface AgentLoopStep {
   latencyMs: number;
 }
 
+// Execution Provenance (Gate 2)
 export interface AgentLoopExecutionResult {
   id: string;
   objective: string;
-  status: 'completed' | 'failed';
+  status: 'completed' | 'partial' | 'failed';
+  decisionSource: 'live_gemini' | 'offline_driver';
+  provider: string;
+  modelTarget: ModelName;
+  providerRequestId?: string;
+  timestamp: string;
+  isLive: boolean;
   steps: AgentLoopStep[];
   observations: ObservationItem[];
   finalAnswer: string;
+  groundingResult: GroundedSynthesisResult;
   evidenceCitations: string[];
   totalLatencyMs: number;
   totalTokens: number;
@@ -58,32 +69,61 @@ export interface AgentLoopExecutionResult {
   tracePath?: string;
 }
 
+export interface DynamicAgentLoopOptions {
+  model?: ModelName;
+  maxSteps?: number;
+  maxRepairAttempts?: number;
+  maxToolFailureRetries?: number;
+  providerTimeoutMs?: number;
+  toolTimeoutMs?: number;
+  signal?: AbortSignal;
+}
+
 export class DynamicAgentLoopRunner {
   private observationLedger: ObservationItem[] = [];
 
   public async runDynamicLoop(
     objective: string,
-    model: ModelName = 'gemini-3.7-flash',
-    maxSteps: number = 6
+    options: DynamicAgentLoopOptions = {}
   ): Promise<AgentLoopExecutionResult> {
+    const {
+      model = 'gemini-3.7-flash',
+      maxSteps = 10,
+      maxRepairAttempts = 2,
+      maxToolFailureRetries = 2,
+      providerTimeoutMs = 15000,
+      toolTimeoutMs = 10000,
+      signal,
+    } = options;
+
     const startTime = performance.now();
-    const executionId = `trace_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const executionId = `trace_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const timestampStr = new Date().toISOString();
     this.observationLedger = [];
     const steps: AgentLoopStep[] = [];
     let currentStep = 1;
     let isFinished = false;
     let rawFinalAnswer = '';
     let totalTokens = 0;
-    let executionStatus: 'completed' | 'failed' = 'failed';
+    let executionStatus: 'completed' | 'partial' | 'failed' = 'failed';
+    let repairAttempts = 0;
+    let toolFailureRetries = 0;
+    let lastInferenceResult: InferenceResult | null = null;
 
-    // Discover tools from real MCP Client (Priority 2)
+    // Discover tools from real MCP Client (Gate 2)
     const mcpTools = await mcpSDKClient.listTools();
     const availableToolNames = new Set(mcpTools.map((t) => t.name));
 
     while (currentStep <= maxSteps && !isFinished) {
+      if (signal?.aborted) {
+        rawFinalAnswer = '[CANCELLED]: Execution aborted by signal.';
+        executionStatus = 'failed';
+        break;
+      }
+
       const stepStartTime = performance.now();
 
-      // 1. Build prompt context with ledger history (Priority 1)
+      // 1. Build prompt context with ledger history
       const promptContext = `[Objective]: ${objective}
 [Observation Ledger]:
 ${
@@ -102,18 +142,47 @@ Option A (Tool Call):
 Option B (Finish):
 {"type": "finish", "answer": "<consolidated_grounded_answer>"}`;
 
-      // 2. Call Gemini model / driver
-      const inference = await executeAgentInference('orchestrator', model, promptContext);
-      totalTokens += inference.tokens;
+      // 2. Call Gemini model / driver with provider timeout
+      let inference: InferenceResult;
+      try {
+        inference = await this.withTimeout(
+          executeAgentInference('orchestrator', model, promptContext),
+          providerTimeoutMs,
+          'Provider inference timeout'
+        );
+        lastInferenceResult = inference;
+        totalTokens += inference.tokens;
+      } catch (err: any) {
+        const obsId = `O${this.observationLedger.length + 1}`;
+        this.observationLedger.push({
+          id: obsId,
+          step: currentStep,
+          toolName: 'system_provider',
+          arguments: {},
+          resultContent: `[ERROR] Provider call failed: ${err.message}`,
+          isError: true,
+          timestamp: Date.now(),
+        });
+        steps.push({
+          stepIndex: currentStep,
+          thought: `Provider call error: ${err.message}`,
+          actionType: 'tool_call',
+          isError: true,
+          observation: err.message,
+          latencyMs: Math.round(performance.now() - stepStartTime),
+        });
+        currentStep++;
+        continue;
+      }
 
-      // 3. Parse & Validate Model Response against Zod Schema (Priority 1 & 4)
+      // 3. Parse & Validate Model Response against Zod Schema (Gate 4)
       let parsedAction: AgentAction | null = null;
       try {
         const jsonText = this.extractJsonString(inference.text);
         const rawJson = JSON.parse(jsonText);
         parsedAction = AgentActionSchema.parse(rawJson);
       } catch (err: any) {
-        // Handle malformed model response (Priority 5)
+        repairAttempts++;
         const obsId = `O${this.observationLedger.length + 1}`;
         const errorMsg = `Malformed model action response: ${err.message}`;
         this.observationLedger.push({
@@ -128,12 +197,18 @@ Option B (Finish):
 
         steps.push({
           stepIndex: currentStep,
-          thought: `Received malformed model response. Emitted error observation to ledger for recovery.`,
+          thought: `Received malformed model response (Attempt ${repairAttempts}/${maxRepairAttempts}). Added error observation for recovery.`,
           actionType: 'tool_call',
           isError: true,
           observation: errorMsg,
           latencyMs: Math.round(performance.now() - stepStartTime),
         });
+
+        if (repairAttempts >= maxRepairAttempts) {
+          rawFinalAnswer = `[FAILURE]: Exceeded maximum malformed action repair budget (${maxRepairAttempts}).`;
+          executionStatus = 'failed';
+          break;
+        }
 
         currentStep++;
         continue;
@@ -143,8 +218,8 @@ Option B (Finish):
       if (parsedAction.type === 'tool_call') {
         const { tool, arguments: toolArgs } = parsedAction;
 
-        // Check if selected tool exists (Priority 1 & 4)
         if (!availableToolNames.has(tool)) {
+          toolFailureRetries++;
           const obsId = `O${this.observationLedger.length + 1}`;
           const errorMsg = `Tool '${tool}' is not registered in MCP server. Available tools: ${Array.from(availableToolNames).join(', ')}`;
           this.observationLedger.push({
@@ -159,7 +234,7 @@ Option B (Finish):
 
           steps.push({
             stepIndex: currentStep,
-            thought: `Attempted to invoke unregistered tool '${tool}'. Added error observation to ledger.`,
+            thought: `Attempted to invoke unregistered tool '${tool}'.`,
             actionType: 'tool_call',
             toolName: tool,
             toolArguments: toolArgs,
@@ -168,14 +243,29 @@ Option B (Finish):
             latencyMs: Math.round(performance.now() - stepStartTime),
           });
 
+          if (toolFailureRetries >= maxToolFailureRetries) {
+            rawFinalAnswer = `[FAILURE]: Exceeded max tool failure retry budget (${maxToolFailureRetries}).`;
+            executionStatus = 'failed';
+            break;
+          }
+
           currentStep++;
           continue;
         }
 
-        // Execute tool via MCP SDK Client (Priority 2)
-        const toolResult = await mcpSDKClient.callTool(tool, toolArgs);
-        const obsId = `O${this.observationLedger.length + 1}`;
+        // Execute tool via MCP Client with timeout
+        let toolResult: { content: string; isError?: boolean; toolName?: string };
+        try {
+          toolResult = await this.withTimeout(
+            mcpSDKClient.callTool(tool, toolArgs),
+            toolTimeoutMs,
+            `MCP Tool '${tool}' execution timeout`
+          );
+        } catch (err: any) {
+          toolResult = { content: `[ERROR] Tool execution failed: ${err.message}`, isError: true };
+        }
 
+        const obsId = `O${this.observationLedger.length + 1}`;
         const obsItem: ObservationItem = {
           id: obsId,
           step: currentStep,
@@ -198,7 +288,6 @@ Option B (Finish):
           latencyMs: Math.round(performance.now() - stepStartTime),
         });
       } else if (parsedAction.type === 'finish') {
-        // 5. Handle Action: Finish
         isFinished = true;
         executionStatus = 'completed';
         rawFinalAnswer = parsedAction.answer;
@@ -214,23 +303,67 @@ Option B (Finish):
       currentStep++;
     }
 
-    if (!isFinished) {
+    if (!isFinished && executionStatus === 'failed' && !rawFinalAnswer) {
       rawFinalAnswer = `[FAILURE]: Dynamic agent loop reached max limit of ${maxSteps} steps without reaching finish decision.`;
       executionStatus = 'failed';
     }
 
-    // 6. Wire Reflection Engine into Production (Priority 6)
+    // 5. Wire Task-Derived Reflection Engine & Evidence Recovery Pass (Gate 6)
     let verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, this.observationLedger);
 
-    // If reflection fails on completed executions, run revision pass using reflectionEngine's revised output (Priority 6)
-    let finalAnswer = rawFinalAnswer;
-    if (executionStatus === 'completed' && !verdict.passed && verdict.revisedOutput) {
-      finalAnswer = verdict.revisedOutput;
-      // Re-evaluate revised output
-      verdict = reflectionEngine.evaluateDeliverable(objective, finalAnswer, this.observationLedger);
+    // If reflection requires more evidence, invoke recommendedAction tool if step budget allows
+    if (verdict.status === 'needs_more_evidence' && verdict.recommendedAction && currentStep <= maxSteps + 1) {
+      const recTool = verdict.recommendedAction.tool;
+      const recArgs = verdict.recommendedAction.arguments;
+
+      if (availableToolNames.has(recTool)) {
+        const stepStartTime = performance.now();
+        const recResult = await mcpSDKClient.callTool(recTool, recArgs);
+        const obsId = `O${this.observationLedger.length + 1}`;
+
+        this.observationLedger.push({
+          id: obsId,
+          step: currentStep,
+          toolName: recTool,
+          arguments: recArgs,
+          resultContent: recResult.content,
+          isError: Boolean(recResult.isError),
+          timestamp: Date.now(),
+        });
+
+        steps.push({
+          stepIndex: currentStep,
+          thought: `Reflection pass triggered automatic evidence acquisition tool '${recTool}'.`,
+          actionType: 'tool_call',
+          toolName: recTool,
+          toolArguments: recArgs,
+          isError: Boolean(recResult.isError),
+          observation: recResult.content,
+          latencyMs: Math.round(performance.now() - stepStartTime),
+        });
+
+        // Re-evaluate reflection after evidence acquisition
+        verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, this.observationLedger);
+      }
     }
 
-    // 7. Grounded Final Synthesis & Citations (Priority 7)
+    let finalAnswer = rawFinalAnswer;
+    if (verdict.revisedOutput && !verdict.passed) {
+      finalAnswer = verdict.revisedOutput;
+    }
+
+    // 6. Grounded Claim Validation (Gate 5)
+    const groundingResult = claimGroundingValidator.validateSynthesisGrounding(finalAnswer, this.observationLedger);
+
+    // Enforce honest execution status based on reflection verdict (Gate 6)
+    if (!verdict.passed) {
+      if (verdict.confidence > 0.4 && this.observationLedger.some((o) => !o.isError)) {
+        executionStatus = 'partial';
+      } else {
+        executionStatus = 'failed';
+      }
+    }
+
     const evidenceCitations = this.observationLedger
       .filter((o) => !o.isError)
       .map((o) => `[Observation ${o.id}] (${o.toolName})`);
@@ -241,20 +374,31 @@ Option B (Finish):
 
     const totalLatencyMs = Math.round(performance.now() - startTime);
 
+    const decisionSource = lastInferenceResult?.decisionSource || 'offline_driver';
+    const provider = lastInferenceResult?.provider || 'offline';
+    const isLive = lastInferenceResult?.isRealApi || false;
+
     const result: AgentLoopExecutionResult = {
       id: executionId,
       objective,
       status: executionStatus,
+      decisionSource,
+      provider,
+      modelTarget: model,
+      providerRequestId: lastInferenceResult?.providerRequestId,
+      timestamp: timestampStr,
+      isLive,
       steps,
       observations: this.observationLedger,
       finalAnswer,
+      groundingResult,
       evidenceCitations,
       totalLatencyMs,
       totalTokens,
       reflectionVerdict: verdict,
     };
 
-    // 8. Automatically Generate Execution Trace JSON (Priority 12)
+    // 7. Save Execution Trace JSON with Provenance (Gate 2 & 15)
     const tracePath = this.saveExecutionTrace(result, model);
     result.tracePath = tracePath;
 
@@ -273,18 +417,24 @@ Option B (Finish):
     return text.trim();
   }
 
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
+    let timer: any;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+    });
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private saveExecutionTrace(result: AgentLoopExecutionResult, model: ModelName): string {
     if (typeof window !== 'undefined') {
       return `trace_${result.id}`;
     }
 
     try {
-      // Node environment trace persisting
-      const reqFs = 'fs';
-      const reqPath = 'path';
-      const fs = require(reqFs);
-      const path = require(reqPath);
-
       const tracesDir = path.join(process.cwd(), 'traces');
       if (!fs.existsSync(tracesDir)) {
         fs.mkdirSync(tracesDir, { recursive: true });
@@ -295,14 +445,19 @@ Option B (Finish):
 
       const traceRecord = {
         executionId: result.id,
-        timestamp: new Date().toISOString(),
-        executionMode: 'model_mediated_mcp',
+        timestamp: result.timestamp,
+        executionMode: result.isLive ? 'model_mediated_mcp' : 'test',
+        decisionSource: result.decisionSource,
+        provider: result.provider,
         modelTarget: model,
+        providerRequestId: result.providerRequestId || `req_${Date.now()}`,
+        isLive: result.isLive,
         userObjective: result.objective,
         status: result.status,
         steps: result.steps,
         observations: result.observations,
         reflectionVerdict: result.reflectionVerdict,
+        groundingResult: result.groundingResult,
         finalAnswer: result.finalAnswer,
         evidenceCitations: result.evidenceCitations,
         metrics: {

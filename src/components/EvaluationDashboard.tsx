@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Download, RefreshCw, Award } from 'lucide-react';
+import { Download, RefreshCw, Award, Activity } from 'lucide-react';
 import { frameworkEvaluator } from '../engine/evaluationEngine';
-import type { EvaluationReport } from '../engine/evaluationEngine';
+import type { ComprehensiveEvaluationReport } from '../engine/evaluationEngine';
 
 export const EvaluationDashboard: React.FC = () => {
-  const [report, setReport] = useState<EvaluationReport | null>(null);
+  const [report, setReport] = useState<ComprehensiveEvaluationReport | null>(null);
   const [isRunningBenchmark, setIsRunningBenchmark] = useState(false);
   const [benchmarkProgress, setBenchmarkProgress] = useState(0);
 
   useEffect(() => {
-    // Initial empirical evaluation run
     frameworkEvaluator.runFullEvaluation().then((res) => setReport(res));
   }, []);
 
@@ -51,29 +50,27 @@ export const EvaluationDashboard: React.FC = () => {
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
       
-      {/* Top Banner & Overall Score Gauge */}
+      {/* Top Banner & Control */}
       <div className="rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-2xl relative overflow-hidden tech-grid-pattern space-y-6">
-        
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
               <span className="rounded-md bg-cyan-950 px-2.5 py-1 text-xs font-mono font-bold text-cyan-300 border border-cyan-500/40">
-                NexusMatrix Evaluation Suite
+                Versioned Evaluation Suite ({report.version})
               </span>
               <span className="rounded-md bg-emerald-950 px-2.5 py-1 text-xs font-mono font-bold text-emerald-300 border border-emerald-500/40 flex items-center space-x-1">
                 <Award className="h-3.5 w-3.5" />
-                <span>{report.grade}</span>
+                <span>Non-Circular Benchmark</span>
               </span>
             </div>
             <h2 className="font-mono text-xl font-bold text-white tracking-wide">
-              Framework Performance & Evaluation Metrics Matrix
+              Empirical Evaluation & Benchmark Performance Matrix
             </h2>
             <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-              Empirical evaluation suite measuring 768D Vector Memory precision, MCP tool selection accuracy, evidence-grounded reflection rates, and execution latency over real test datasets.
+              Calculated empirical precision, recall, claim-groundedness, tool call success rates, and reflection pass rates over versioned dataset <code className="text-cyan-300">evaluation/dataset/v1.json</code>.
             </p>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex items-center space-x-3 shrink-0">
             <button
               onClick={handleRunBenchmarkSuite}
@@ -85,7 +82,7 @@ export const EvaluationDashboard: React.FC = () => {
               }`}
             >
               <RefreshCw className={`h-4 w-4 ${isRunningBenchmark ? 'animate-spin' : ''}`} />
-              <span>{isRunningBenchmark ? `Benchmarking (${benchmarkProgress}%)` : 'Run Live Benchmark'}</span>
+              <span>{isRunningBenchmark ? `Benchmarking (${benchmarkProgress}%)` : 'Run Evaluation Dataset'}</span>
             </button>
 
             <button
@@ -93,16 +90,15 @@ export const EvaluationDashboard: React.FC = () => {
               className="flex items-center space-x-2 rounded-xl border border-indigo-700/50 bg-indigo-950 px-4 py-2.5 text-xs font-mono text-indigo-200 hover:bg-indigo-900 transition-colors"
             >
               <Download className="h-4 w-4" />
-              <span>Export Report</span>
+              <span>Export Report JSON</span>
             </button>
           </div>
         </div>
 
-        {/* Live Progress Bar during benchmark */}
         {isRunningBenchmark && (
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] font-mono text-cyan-300">
-              <span>Executing Automated Test Scenarios across 5 Evaluation Dimensions...</span>
+              <span>Executing test dataset cases across dynamic agent runner...</span>
               <span>{benchmarkProgress}%</span>
             </div>
             <div className="h-2 w-full rounded-full bg-nexus-900 overflow-hidden">
@@ -113,105 +109,143 @@ export const EvaluationDashboard: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
 
-        {/* Score Breakdown Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 pt-2">
-          <div className="rounded-xl border border-indigo-900/60 bg-nexus-900/90 p-4 text-center space-y-1">
-            <span className="font-mono text-[10px] uppercase text-slate-400">Overall Score</span>
-            <div className="font-mono text-2xl font-bold text-cyan-300">{report.overallScore}</div>
-            <span className="font-mono text-[10px] text-emerald-400">/ 100 Rating</span>
+      {/* Separated Execution Modes Section (Gate 8) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* LIVE GEMINI EVALUATION BOX */}
+        <div className="rounded-2xl border border-emerald-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-emerald-950 pb-3">
+            <div className="flex items-center space-x-2">
+              <Activity className="h-4 w-4 text-emerald-400" />
+              <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-emerald-300">
+                Live Gemini API Execution Metrics
+              </h3>
+            </div>
+            <span className="font-mono text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-bold">
+              decisionSource: live_gemini
+            </span>
           </div>
 
-          <div className="rounded-xl border border-indigo-900/60 bg-nexus-900/90 p-4 text-center space-y-1">
-            <span className="font-mono text-[10px] uppercase text-slate-400">Cache Precision</span>
-            <div className="font-mono text-2xl font-bold text-cyan-300">{report.benchmarkSummary.cacheHitPrecision}%</div>
-            <span className="font-mono text-[10px] text-slate-400">&gt;0.88 Threshold</span>
+          {report.liveMetrics ? (
+            <div className="grid grid-cols-2 gap-4 font-mono text-xs">
+              <div className="rounded-xl border border-emerald-950 bg-nexus-900 p-3 space-y-1">
+                <span className="text-slate-400 text-[10px] uppercase">Evaluated Cases</span>
+                <div className="font-bold text-emerald-300 text-lg">{report.liveMetrics.totalCasesEvaluated}</div>
+              </div>
+              <div className="rounded-xl border border-emerald-950 bg-nexus-900 p-3 space-y-1">
+                <span className="text-slate-400 text-[10px] uppercase">Pass Rate</span>
+                <div className="font-bold text-emerald-300 text-lg">{report.liveMetrics.passRatePct}%</div>
+              </div>
+              <div className="rounded-xl border border-emerald-950 bg-nexus-900 p-3 space-y-1">
+                <span className="text-slate-400 text-[10px] uppercase">Groundedness Pct</span>
+                <div className="font-bold text-cyan-300 text-lg">{report.liveMetrics.groundednessPct}%</div>
+              </div>
+              <div className="rounded-xl border border-emerald-950 bg-nexus-900 p-3 space-y-1">
+                <span className="text-slate-400 text-[10px] uppercase">Tool Success</span>
+                <div className="font-bold text-purple-300 text-lg">{report.liveMetrics.toolSuccessRatePct}%</div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 text-center space-y-2">
+              <div className="font-mono text-xs font-bold text-amber-300">
+                Live evaluation not yet executed
+              </div>
+              <p className="text-[11px] text-slate-400 max-w-sm mx-auto font-sans leading-relaxed">
+                Provide <code className="text-cyan-300">GEMINI_API_KEY</code> in server environment and run <code className="text-cyan-300">npm run demo:live</code> to generate live model execution evidence.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* OFFLINE TEST DRIVER EVALUATION BOX */}
+        <div className="rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-indigo-950 pb-3">
+            <div className="flex items-center space-x-2">
+              <Activity className="h-4 w-4 text-cyan-400" />
+              <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-slate-300">
+                Offline Test Driver Benchmark Metrics
+              </h3>
+            </div>
+            <span className="font-mono text-[10px] bg-indigo-950 text-cyan-300 border border-indigo-500/30 px-2 py-0.5 rounded font-bold">
+              decisionSource: offline_driver
+            </span>
           </div>
 
-          <div className="rounded-xl border border-indigo-900/60 bg-nexus-900/90 p-4 text-center space-y-1">
-            <span className="font-mono text-[10px] uppercase text-slate-400">MCP Groundedness</span>
-            <div className="font-mono text-2xl font-bold text-purple-300">{report.benchmarkSummary.toolCallGroundedness}%</div>
-            <span className="font-mono text-[10px] text-purple-400">Zero Unverified</span>
-          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono text-xs">
+            <div className="rounded-xl border border-indigo-950 bg-nexus-900 p-3 space-y-1">
+              <span className="text-slate-400 text-[10px] uppercase">Total Cases</span>
+              <div className="font-bold text-white text-lg">{report.offlineMetrics.totalCasesEvaluated}</div>
+            </div>
 
-          <div className="rounded-xl border border-indigo-900/60 bg-nexus-900/90 p-4 text-center space-y-1">
-            <span className="font-mono text-[10px] uppercase text-slate-400">Reflection Pass</span>
-            <div className="font-mono text-2xl font-bold text-emerald-300">{report.benchmarkSummary.reflectionPassRate}%</div>
-            <span className="font-mono text-[10px] text-emerald-400">Audit Revision</span>
-          </div>
+            <div className="rounded-xl border border-indigo-950 bg-nexus-900 p-3 space-y-1">
+              <span className="text-slate-400 text-[10px] uppercase">Pass Rate</span>
+              <div className="font-bold text-emerald-300 text-lg">{report.offlineMetrics.passRatePct}%</div>
+            </div>
 
-          <div className="rounded-xl border border-indigo-900/60 bg-nexus-900/90 p-4 text-center space-y-1">
-            <span className="font-mono text-[10px] uppercase text-slate-400">Token Savings</span>
-            <div className="font-mono text-2xl font-bold text-amber-300">{report.benchmarkSummary.tokenCompressionRatio}x</div>
-            <span className="font-mono text-[10px] text-amber-400">Compression</span>
-          </div>
+            <div className="rounded-xl border border-indigo-950 bg-nexus-900 p-3 space-y-1">
+              <span className="text-slate-400 text-[10px] uppercase">Groundedness</span>
+              <div className="font-bold text-cyan-300 text-lg">{report.offlineMetrics.groundednessPct}%</div>
+            </div>
 
-          <div className="rounded-xl border border-indigo-900/60 bg-nexus-900/90 p-4 text-center space-y-1">
-            <span className="font-mono text-[10px] uppercase text-slate-400">Zero-Trust Pass</span>
-            <div className="font-mono text-2xl font-bold text-emerald-400">{report.benchmarkSummary.zeroTrustCompliancePct}%</div>
-            <span className="font-mono text-[10px] text-emerald-400">100% Bounds</span>
+            <div className="rounded-xl border border-indigo-950 bg-nexus-900 p-3 space-y-1">
+              <span className="text-slate-400 text-[10px] uppercase">Precision</span>
+              <div className="font-bold text-cyan-300 text-base">{String(report.offlineMetrics.precisionPct)}</div>
+            </div>
+
+            <div className="rounded-xl border border-indigo-950 bg-nexus-900 p-3 space-y-1">
+              <span className="text-slate-400 text-[10px] uppercase">Recall</span>
+              <div className="font-bold text-cyan-300 text-base">{String(report.offlineMetrics.recallPct)}</div>
+            </div>
+
+            <div className="rounded-xl border border-indigo-950 bg-nexus-900 p-3 space-y-1">
+              <span className="text-slate-400 text-[10px] uppercase">Reflection Pass</span>
+              <div className="font-bold text-purple-300 text-lg">{report.offlineMetrics.reflectionSuccessRatePct}%</div>
+            </div>
           </div>
         </div>
 
       </div>
 
-      {/* 5-Dimension Metric Detail Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {report.dimensions.map((dim) => (
-          <div
-            key={dim.id}
-            className="rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-5 backdrop-blur-xl shadow-xl flex flex-col justify-between space-y-4 hover:border-cyan-500/40 transition-colors"
-          >
-            <div className="space-y-3">
-              {/* Category & Status Header */}
+      {/* Case Execution Breakdown List */}
+      <div className="rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl space-y-4">
+        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-slate-300 border-b border-indigo-950 pb-3">
+          Benchmark Dataset Case Execution Details
+        </h3>
+
+        <div className="space-y-3 font-mono text-xs">
+          {report.caseResults.map((res) => (
+            <div
+              key={res.caseId}
+              className="rounded-xl border border-indigo-950 bg-nexus-900/90 p-4 space-y-2 hover:border-cyan-500/40 transition-colors"
+            >
               <div className="flex items-center justify-between">
-                <span className="rounded bg-indigo-950 px-2 py-0.5 font-mono text-[10px] text-indigo-300 border border-indigo-500/30">
-                  {dim.category}
-                </span>
-                <span className="flex items-center space-x-1 font-mono text-[10px] text-emerald-400">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  <span>Score: {dim.score} / 100</span>
+                <div className="flex items-center space-x-2">
+                  <span className="rounded bg-indigo-950 px-2 py-0.5 text-cyan-300 font-bold border border-indigo-500/30">
+                    {res.caseId}
+                  </span>
+                  <span className="text-slate-200 font-bold font-sans">{res.objective}</span>
+                </div>
+                <span
+                  className={`rounded px-2 py-0.5 font-bold text-[10px] border ${
+                    res.passed
+                      ? 'bg-emerald-950 text-emerald-300 border-emerald-500/40'
+                      : 'bg-rose-950 text-rose-300 border-rose-500/40'
+                  }`}
+                >
+                  {res.passed ? 'PASSED' : 'FAILED'}
                 </span>
               </div>
 
-              {/* Title & Value */}
-              <div>
-                <h3 className="font-sans font-bold text-sm text-white mb-1">{dim.name}</h3>
-                <div className="font-mono text-lg font-bold text-cyan-300">{dim.valueDisplay}</div>
-              </div>
-
-              {/* Description */}
-              <p className="text-xs text-slate-400 leading-relaxed font-sans">{dim.description}</p>
-
-              {/* Progress Bar */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                  <span>Evaluation Target Score</span>
-                  <span>{dim.targetScore}%</span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-nexus-900 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-cyan-400 to-indigo-500"
-                    style={{ width: `${dim.score}%` }}
-                  />
-                </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-indigo-950">
+                <span>Mode: <strong className="text-cyan-300">{res.runMode}</strong> ({res.decisionSource})</span>
+                <span>Groundedness: <strong className="text-emerald-400">{res.groundednessPct}%</strong></span>
+                <span>Latency: <strong>{res.latencyMs} ms</strong></span>
               </div>
             </div>
-
-            {/* Technical Detail Breakdown */}
-            <div className="rounded-xl border border-indigo-950 bg-nexus-900/90 p-3 space-y-1.5 font-mono text-[11px] text-slate-300">
-              <span className="text-[10px] text-cyan-400 uppercase tracking-widest block font-bold">
-                Technical Benchmark Metrics
-              </span>
-              {Object.entries(dim.details).map(([key, val]) => (
-                <div key={key} className="flex justify-between text-[11px]">
-                  <span className="text-slate-400 capitalize">{key.replace(/([A-Z])/g, ' $1')}:</span>
-                  <span className="text-cyan-300 font-bold">{String(val)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
     </div>

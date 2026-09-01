@@ -11,8 +11,9 @@ describe('Security & Row Level Security (RLS) Remediation Suite', () => {
     expect(res.vulnerabilities.some((v) => v.category === 'SQL Injection')).toBe(true);
   });
 
-  it('should detect hardcoded passwords or API key candidates in source payloads', async () => {
-    const unsafeCode = `const dbPassword = "root @komali"; const key = "AIzaSyDummyTestKeyForVerification12345";`;
+  it('should detect hardcoded passwords or API key candidates in source payloads using synthetic fixtures', async () => {
+    // Synthetic secret fixture (Gate 1 - ZERO real credentials in test source)
+    const unsafeCode = `const dbPassword = "FAKE_TEST_SECRET_DO_NOT_USE_123456"; const key = "AIzaSyDummyTestKeyForVerification12345";`;
     const res = await executeZeroTrustAuditTool({ payloadToAudit: unsafeCode });
 
     expect(res.status).toBe('FAILED');
@@ -38,17 +39,26 @@ describe('Security & Row Level Security (RLS) Remediation Suite', () => {
     expect(res.vulnerabilitiesCount).toBe(0);
   });
 
-  it('should verify schema policy structures for tenant isolation (User A vs User B)', () => {
-    // Verify RLS policy logic parameters
+  it('should enforce strict tenant isolation policies for User A vs User B and reject anonymous access', () => {
     const userA = 'user_12345';
     const userB = 'user_67890';
+    const anonUser = '';
+    const serviceRoleUser = 'service_role';
 
-    const canAccessRecord = (ownerId: string, requestUser: string) => {
-      return ownerId === requestUser || ownerId === 'anon';
+    // RLS Policy Engine Evaluation Simulation (Gate 9)
+    const evaluateRlsAccess = (recordOwnerId: string, requestingUser: string, role: string) => {
+      if (role === 'service_role') return true; // Service role bypass for system management
+      if (!requestingUser || requestingUser === 'anon') return false; // Anonymous access rejected
+      return recordOwnerId === requestingUser; // Strict ownership match required
     };
 
-    expect(canAccessRecord('user_12345', userA)).toBe(true);
-    expect(canAccessRecord('user_12345', userB)).toBe(false);
-    expect(canAccessRecord('anon', userB)).toBe(true);
+    // User A can access own records
+    expect(evaluateRlsAccess('user_12345', userA, 'authenticated')).toBe(true);
+    // User B CANNOT access User A records
+    expect(evaluateRlsAccess('user_12345', userB, 'authenticated')).toBe(false);
+    // Anonymous user CANNOT access User A records
+    expect(evaluateRlsAccess('user_12345', anonUser, 'anon')).toBe(false);
+    // Service role CAN access records for admin ops
+    expect(evaluateRlsAccess('user_12345', serviceRoleUser, 'service_role')).toBe(true);
   });
 });

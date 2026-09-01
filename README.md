@@ -1,98 +1,52 @@
-# NexusMatrix ⚡ Enterprise Multi-Modal AI Agent Framework
+# NexusMatrix ⚡ Enterprise Multi-Modal MCP Agent Orchestrator
 
-**NexusMatrix** is an enterprise-grade AI engineering framework for dynamic task orchestration across specialized multi-modal AI agents using a shared 768-dimensional vector database, semantic caching, and real-time inter-agent feedback telemetry.
-
-![NexusMatrix System Architecture](./src/assets/hero.png)
+**NexusMatrix** is an enterprise-grade AI agent orchestration framework featuring 100% genuine model-mediated control flow, real Model Context Protocol (MCP) transport integration via `@modelcontextprotocol/sdk`, task-derived evidence reflection, claim-to-observation grounding, versioned dataset evaluation, strict RLS tenant isolation, and async Supabase vector persistence.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Architecture & Core Capabilities
 
-* **Dynamic DAG Task Graph Orchestration**: Decomposes complex engineering objectives into dependency-linked Directed Acyclic Graphs (DAG).
-* **Model Multiplexing**: Routable to specialized Gemini models (`gemini-3.7-flash` for fast orchestration/vision and `gemini-3.1-pro-preview` for deep code & logic).
-* **Shared 768D Vector Database**: In-memory vector database using L2-normalized 768-D embeddings and Cosine Similarity dot-product math.
-* **Semantic Cache Layer (>0.88 Threshold)**: Bypasses LLM inference for queries matching historical vector memory with >88% similarity, delivering sub-millisecond responses (~0.4ms) at 0 token cost.
-* **Inter-Agent Feedback Loop**: Emits real-time `AgentFeedbackReport` telemetry with confidence scores (0.0 to 1.0), error alerts, and suggested dynamic reroutes.
-* **4 Interactive Modules**:
-  1. **DAG Canvas (`CANVAS`)**: Topological graph visualizer with live node state execution animation, latency timers, token counters, and inspector drawer.
-  2. **Vector DB Explorer (`VECTOR DB`)**: 2D vector projection scatter map (t-SNE/PCA) with hover tooltips and Cosine Search Sandbox.
-  3. **Agent Mesh Dashboard (`AGENT MESH`)**: 7-agent capability registry matrix, standalone multi-modal sandbox (Text, Vision, Code), and live telemetry event log.
-  4. **Architecture Blueprint (`BLUEPRINT`)**: LaTeX mathematical formulations, sequence diagrams, and model benchmark matrices.
+* **Model-Mediated MCP Decision Loop**: Executes dynamic decision loops where Google Gemini models (`gemini-3.7-flash`, `gemini-3.1-pro-preview`) inspect observation ledgers and determine next tool calls over MCP transports (`InMemoryTransport`).
+* **Real MCP SDK Integration**: Built strictly on `@modelcontextprotocol/sdk/client` and `@modelcontextprotocol/sdk/server`, exposing typed schemas for `vector_search`, `store_memory`, `refactor_code`, `zero_trust_audit`, and `parse_vision_tags`.
+* **Task-Derived Evidence Reflection**: Evaluates output deliverable quality dynamically based on task type (`vision`, `audit`, `vector_search`, `refactor`), requesting missing tool evidence and issuing automated recovery passes.
+* **Claim-to-Observation Grounding Engine**: Verifies claim citations (`[Observation O1]`) against observation ledgers, ensuring cited observations exist in the run and contain matching evidence.
+* **Strict Security & RLS Tenant Isolation**: Environment-managed credentials (`GEMINI_API_KEY`, `SUPABASE_SECRET_KEY`), zero browser secrets, and strict Supabase Postgres RLS policies (`(SELECT auth.uid())::text = owner_id`) with `WITH CHECK` enforcement.
+* **Non-Circular Versioned Evaluation Benchmark**: Evaluates framework performance against `evaluation/dataset/v1.json`, reporting separate empirical metrics for **LIVE GEMINI** vs **OFFLINE DRIVER** execution without fabricated headline constants.
 
 ---
 
-## 📐 System Architecture
+## 🚀 Commands & Verification Pipeline
 
-For complete mathematical proofs, sequence diagrams, and model benchmarks, see [ARCHITECTURE.md](./ARCHITECTURE.md).
-
-```
-[ User Objective ] ──> [ Master Orchestrator (gemini-3.7-flash) ]
-                              │
-                     [ Topological DAG ]
-                              │
-          ┌───────────────────┴───────────────────┐
-          ▼                                       ▼
-[ Semantic Cache Check ]               [ Agent Model Multiplexer ]
-  (>0.88 Cosine Sim Hit)                ┌─────────┴─────────┐
-          │                             ▼                   ▼
-  (Sub-ms Bypass)             gemini-3.7-flash    gemini-3.1-pro-preview
-          │                   (Summarizer/Vision)   (Code/Logic)
-          └───────────────────┬───────────────────┘
-                              ▼
-               [ Zero-Trust Guardrail Agent ]
-                              │
-               [ Inter-Agent Telemetry Bus ]
-                              │
-               [ Shared 768D Vector Store ]
-                              │
-             [ Executive Synthesizer Agent ]
-                              │
-            [ Consolidated Executive Report ]
-```
-
----
-
-## 🚀 Quick Start
-
-### 1. Installation
 ```bash
-git clone https://github.com/ks-komali5/Nexus-matrix.git
-cd Nexus-matrix
-npm install
-```
+# 1. Run Vitest Unit & Integration Test Suite (44 Tests, 9 Suites)
+npm run test
 
-### 2. Running Locally
-```bash
-# Start Vite Frontend Dev Server
+# 2. Run Strict TypeScript Static Typecheck
+npm run typecheck
+
+# 3. Build Production Bundle (tsc -b && vite build)
+npm run build
+
+# 4. Run Cross-Platform Code Lint
+npm run lint
+
+# 5. Run Live Gemini Model Execution Evidence Demo
+GEMINI_API_KEY="your_key" npm run demo:live
+
+# 6. Generate Curated Execution Traces
+npm run traces:generate
+
+# 7. Start Express Server & Frontend App
+npm run server
 npm run dev
-
-# (Optional) Start Express Backend API Server
-npx tsx server/server.ts
 ```
 
-Open **`http://localhost:5173/`** in your browser.
-
 ---
 
-## ⚙️ Configuration & Execution Modes
+## ⚙️ Security Posture & Architecture Boundaries
 
-NexusMatrix supports two seamless execution modes:
-
-1. **Autonomous High-Fidelity Simulation Mode (Default)**:
-   Operates out-of-the-box locally with 100% vector math calculations, Cosine similarity evaluation, and simulated agent model outputs without requiring API keys.
-
-2. **Live Gemini Multi-Modal API Mode**:
-   Click **"Configure Gemini Key"** in the top navigation header and enter your `GEMINI_API_KEY`. The backend will execute live inference calls to `gemini-3.7-flash` and `gemini-3.1-pro-preview` using `@google/genai`.
-
----
-
-## 🧮 Mathematical Formulations
-
-### Cosine Similarity
-$$\text{Similarity}(A, B) = \frac{A \cdot B}{\|A\| \|B\|} = \frac{\sum_{i=1}^{768} A_i B_i}{\sqrt{\sum_{i=1}^{768} A_i^2} \sqrt{\sum_{i=1}^{768} B_i^2}}$$
-
-### Semantic Cache Distance Threshold
-$$d(A, B) = 1 - \text{Similarity}(A, B) \le 0.12 \implies \text{Similarity}(A, B) \ge 0.88$$
+* **Browser / Server Separation**: The browser UI communicates exclusively over HTTP REST API endpoints exposed by `server/server.ts` (`/api/agent-loop/run`, `/api/evaluation/run`, `/api/mcp/*`, `/api/vectors/*`). No API keys or privileged database operations exist in client-side code.
+* **Database & Credential Security**: Credentials are set strictly via process environment variables (`.env`). Anonymous bypass (`owner_id = 'anon'`) is eliminated.
 
 ---
 

@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- 2. Create 768D Vector Memory Table
 CREATE TABLE IF NOT EXISTS nexus_vectors (
   id TEXT PRIMARY KEY,
-  owner_id TEXT NOT NULL DEFAULT 'anon',
+  owner_id TEXT NOT NULL,
   text TEXT NOT NULL,
   agent_id TEXT NOT NULL,
   agent_name TEXT NOT NULL,
@@ -26,7 +26,7 @@ ON nexus_vectors USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 -- 4. Create DAG Task Graphs Table
 CREATE TABLE IF NOT EXISTS nexus_dag_graphs (
   id TEXT PRIMARY KEY,
-  owner_id TEXT NOT NULL DEFAULT 'anon',
+  owner_id TEXT NOT NULL,
   objective TEXT NOT NULL,
   status TEXT NOT NULL,
   nodes JSONB NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS nexus_dag_graphs (
 -- 5. Create Inter-Agent Telemetry Logs Table
 CREATE TABLE IF NOT EXISTS nexus_telemetry_logs (
   id TEXT PRIMARY KEY,
-  owner_id TEXT NOT NULL DEFAULT 'anon',
+  owner_id TEXT NOT NULL,
   node_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
   agent_name TEXT NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS nexus_telemetry_logs (
 );
 
 -- ============================================================================
--- 6. SECURITY REMEDIATION: Row Level Security (RLS) & Access Policies
+-- 6. SECURITY REMEDIATION: Row Level Security (RLS) & Strict Access Policies
 -- ============================================================================
 
 ALTER TABLE nexus_vectors ENABLE ROW LEVEL SECURITY;
@@ -69,61 +69,78 @@ DROP POLICY IF EXISTS nexus_vectors_delete_policy ON nexus_vectors;
 
 DROP POLICY IF EXISTS nexus_dag_graphs_select_policy ON nexus_dag_graphs;
 DROP POLICY IF EXISTS nexus_dag_graphs_insert_policy ON nexus_dag_graphs;
+DROP POLICY IF EXISTS nexus_dag_graphs_update_policy ON nexus_dag_graphs;
+DROP POLICY IF EXISTS nexus_dag_graphs_delete_policy ON nexus_dag_graphs;
 
 DROP POLICY IF EXISTS nexus_telemetry_logs_select_policy ON nexus_telemetry_logs;
 DROP POLICY IF EXISTS nexus_telemetry_logs_insert_policy ON nexus_telemetry_logs;
 
--- RLS Policies for nexus_vectors (Tenant / User Isolation)
+-- RLS Policies for nexus_vectors (Strict Authenticated Tenant Isolation)
 CREATE POLICY nexus_vectors_select_policy ON nexus_vectors
-  FOR SELECT USING (
-    owner_id = current_setting('request.jwt.claims', true)::json->>'sub'
-    OR owner_id = 'anon'
+  FOR SELECT TO authenticated USING (
+    owner_id = (SELECT auth.uid())::text
     OR current_setting('role', true) = 'service_role'
   );
 
 CREATE POLICY nexus_vectors_insert_policy ON nexus_vectors
-  FOR INSERT WITH CHECK (
-    owner_id = COALESCE(current_setting('request.jwt.claims', true)::json->>'sub', 'anon')
+  FOR INSERT TO authenticated WITH CHECK (
+    owner_id = (SELECT auth.uid())::text
     OR current_setting('role', true) = 'service_role'
   );
 
 CREATE POLICY nexus_vectors_update_policy ON nexus_vectors
-  FOR UPDATE USING (
-    owner_id = current_setting('request.jwt.claims', true)::json->>'sub'
+  FOR UPDATE TO authenticated USING (
+    owner_id = (SELECT auth.uid())::text
+    OR current_setting('role', true) = 'service_role'
+  ) WITH CHECK (
+    owner_id = (SELECT auth.uid())::text
     OR current_setting('role', true) = 'service_role'
   );
 
 CREATE POLICY nexus_vectors_delete_policy ON nexus_vectors
-  FOR DELETE USING (
-    owner_id = current_setting('request.jwt.claims', true)::json->>'sub'
+  FOR DELETE TO authenticated USING (
+    owner_id = (SELECT auth.uid())::text
     OR current_setting('role', true) = 'service_role'
   );
 
 -- RLS Policies for nexus_dag_graphs
 CREATE POLICY nexus_dag_graphs_select_policy ON nexus_dag_graphs
-  FOR SELECT USING (
-    owner_id = current_setting('request.jwt.claims', true)::json->>'sub'
-    OR owner_id = 'anon'
+  FOR SELECT TO authenticated USING (
+    owner_id = (SELECT auth.uid())::text
     OR current_setting('role', true) = 'service_role'
   );
 
 CREATE POLICY nexus_dag_graphs_insert_policy ON nexus_dag_graphs
-  FOR INSERT WITH CHECK (
-    owner_id = COALESCE(current_setting('request.jwt.claims', true)::json->>'sub', 'anon')
+  FOR INSERT TO authenticated WITH CHECK (
+    owner_id = (SELECT auth.uid())::text
+    OR current_setting('role', true) = 'service_role'
+  );
+
+CREATE POLICY nexus_dag_graphs_update_policy ON nexus_dag_graphs
+  FOR UPDATE TO authenticated USING (
+    owner_id = (SELECT auth.uid())::text
+    OR current_setting('role', true) = 'service_role'
+  ) WITH CHECK (
+    owner_id = (SELECT auth.uid())::text
+    OR current_setting('role', true) = 'service_role'
+  );
+
+CREATE POLICY nexus_dag_graphs_delete_policy ON nexus_dag_graphs
+  FOR DELETE TO authenticated USING (
+    owner_id = (SELECT auth.uid())::text
     OR current_setting('role', true) = 'service_role'
   );
 
 -- RLS Policies for nexus_telemetry_logs
 CREATE POLICY nexus_telemetry_logs_select_policy ON nexus_telemetry_logs
-  FOR SELECT USING (
-    owner_id = current_setting('request.jwt.claims', true)::json->>'sub'
-    OR owner_id = 'anon'
+  FOR SELECT TO authenticated USING (
+    owner_id = (SELECT auth.uid())::text
     OR current_setting('role', true) = 'service_role'
   );
 
 CREATE POLICY nexus_telemetry_logs_insert_policy ON nexus_telemetry_logs
-  FOR INSERT WITH CHECK (
-    owner_id = COALESCE(current_setting('request.jwt.claims', true)::json->>'sub', 'anon')
+  FOR INSERT TO authenticated WITH CHECK (
+    owner_id = (SELECT auth.uid())::text
     OR current_setting('role', true) = 'service_role'
   );
 
@@ -176,9 +193,7 @@ BEGIN
   FROM nexus_vectors v
   WHERE 1 - (v.embedding <=> query_embedding) >= match_threshold
     AND (
-      request_owner_id IS NULL 
-      OR v.owner_id = request_owner_id 
-      OR v.owner_id = 'anon'
+      request_owner_id IS NOT NULL AND v.owner_id = request_owner_id
     )
   ORDER BY v.embedding <=> query_embedding ASC
   LIMIT match_count;

@@ -29,3 +29,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary execution trace files (Keep curated traces)
+traces/*.json
+!traces/curated/
