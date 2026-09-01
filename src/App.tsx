@@ -1,28 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Header } from './components/Header';
 import { DAGCanvas } from './components/DAGCanvas';
 import { VectorExplorer } from './components/VectorExplorer';
 import { AgentMeshDashboard } from './components/AgentMeshDashboard';
 import { EvaluationDashboard } from './components/EvaluationDashboard';
 import { ArchitectureBlueprint } from './components/ArchitectureBlueprint';
-import { dagRunner } from './engine/dagOrchestrator';
 
 export function App() {
   const [activeTab, setActiveTab] = useState<'CANVAS' | 'VECTOR DB' | 'AGENT MESH' | 'EVALUATION' | 'BLUEPRINT'>('CANVAS');
-  const [telemetryCount, setTelemetryCount] = useState<number>(3);
-
-  useEffect(() => {
-    const unsubscribe = dagRunner.subscribe({
-      onGraphUpdate: () => {},
-      onTelemetryEmit: () => {
-        setTelemetryCount((prev) => prev + 1);
-      },
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+  const [telemetryCount] = useState<number>(3);
 
   return (
     <div className="min-h-screen bg-nexus-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200 antialiased">
@@ -49,7 +35,7 @@ export function App() {
             <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
             <span>NexusMatrix Enterprise AI Engineering Framework</span>
             <span className="text-slate-600">|</span>
-            <span className="text-cyan-400">768-D Vector Database Active</span>
+            <span className="text-cyan-400">HTTP REST Server Boundary Active</span>
           </div>
 
           <div className="flex items-center space-x-4 text-[11px]">

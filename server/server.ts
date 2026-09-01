@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Zod Validation Schemas for Server Endpoints (Priority 4)
+// Zod Validation Schemas for Server Endpoints (Gate 11 & Priority 4)
 const AgentLoopRunSchema = z.object({
   objective: z.string().min(1, 'Objective string cannot be empty'),
   model: z.enum(['gemini-3.7-flash', 'gemini-3.1-pro-preview']).optional().default('gemini-3.7-flash'),
@@ -34,6 +34,14 @@ const McpCallSchema = z.object({
 const VectorSearchSchema = z.object({
   query: z.string().min(1, 'Query string is required'),
   topK: z.number().min(1).max(50).optional().default(5),
+});
+
+const VectorAddSchema = z.object({
+  text: z.string().min(1, 'Vector text required'),
+  agentId: z.string().optional().default('orchestrator'),
+  agentName: z.string().optional().default('Master Orchestrator Agent'),
+  modality: z.string().optional().default('text'),
+  inputType: z.string().optional().default('Custom User Memory'),
 });
 
 const AgentExecuteSchema = z.object({
@@ -111,7 +119,11 @@ app.get('/api/agents', (req, res) => {
   res.json(INITIAL_AGENTS);
 });
 
-// Vector DB Search Endpoint
+// Vector DB API Endpoints
+app.get('/api/vectors', (req, res) => {
+  res.json(sharedVectorDB.getAllVectors());
+});
+
 app.post('/api/vectors/search', (req, res) => {
   try {
     const validated = VectorSearchSchema.parse(req.body);
@@ -132,6 +144,27 @@ app.post('/api/vectors/search', (req, res) => {
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
+});
+
+app.post('/api/vectors/add', (req, res) => {
+  try {
+    const validated = VectorAddSchema.parse(req.body);
+    const newItem = sharedVectorDB.addVector(
+      validated.text,
+      validated.agentId,
+      validated.agentName,
+      validated.modality,
+      validated.inputType
+    );
+    res.json(newItem);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/vectors/clear', (req, res) => {
+  sharedVectorDB.clearNonSeedVectors();
+  res.json({ success: true, remaining: sharedVectorDB.size() });
 });
 
 // Execute Standalone Multi-Modal Agent API

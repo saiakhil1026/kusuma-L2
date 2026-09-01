@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, Activity, Play, Upload, Sparkles } from 'lucide-react';
 import type { IMultiModalAgent, AgentFeedbackReport, AgentId, ModelName } from '../types';
-import { agentRegistry } from '../engine/agentRegistry';
-import { executeAgentInference } from '../engine/geminiClient';
-import { dagRunner } from '../engine/dagOrchestrator';
+import { apiClient } from '../services/apiClient';
 
 export const AgentMeshDashboard: React.FC = () => {
-  const [agents, setAgents] = useState<IMultiModalAgent[]>(agentRegistry.getAllAgents());
+  const [agents, setAgents] = useState<IMultiModalAgent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId>('code');
   const [sandboxPrompt, setSandboxPrompt] = useState('Generate a type-safe TypeScript function for 768-D vector dot product with zero-allocation memory loop.');
   const [sandboxModel, setSandboxModel] = useState<ModelName>('gemini-3.1-pro-preview');
@@ -17,6 +15,8 @@ export const AgentMeshDashboard: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
   useEffect(() => {
+    fetchAgents();
+
     const seedReports: AgentFeedbackReport[] = [
       {
         id: 'rep_1',
@@ -59,34 +59,29 @@ export const AgentMeshDashboard: React.FC = () => {
       },
     ];
     setTelemetryLogs(seedReports);
-
-    const unsubscribe = dagRunner.subscribe({
-      onGraphUpdate: () => setAgents(agentRegistry.getAllAgents()),
-      onTelemetryEmit: (report) => {
-        setTelemetryLogs((prev) => [report, ...prev].slice(0, 50));
-      },
-    });
-
-    return () => {
-      unsubscribe();
-    };
   }, []);
+
+  const fetchAgents = async () => {
+    try {
+      const list = await apiClient.getAgents();
+      setAgents(list);
+    } catch (err) {
+      console.warn('Agents fetch error:', err);
+    }
+  };
 
   const handleRunSandbox = async () => {
     if (!sandboxPrompt.trim() || isExecuting) return;
     setIsExecuting(true);
     setSandboxOutput(null);
 
-    const agent = agentRegistry.getAgent(selectedAgentId);
-    agentRegistry.updateAgentStatus(selectedAgentId, 'processing');
-    setAgents(agentRegistry.getAllAgents());
+    const agent = selectedAgent;
 
     try {
-      const result = await executeAgentInference(
+      const result = await apiClient.executeAgent(
         selectedAgentId,
         sandboxModel,
         sandboxPrompt,
-        undefined,
         sandboxImage
       );
 
@@ -101,7 +96,7 @@ export const AgentMeshDashboard: React.FC = () => {
         agentName: agent?.name || selectedAgentId,
         status: 'success',
         confidence: empiricalConfidence,
-        alerts: [result.isRealApi ? '[Live Event] Executed via real Gemini API SDK.' : '[Local Driver] Executed via dynamic model decision driver.'],
+        alerts: [result.isRealApi ? '[Live Event] Executed via server Express API & Gemini SDK.' : '[Local Driver] Executed via server dynamic model decision driver.'],
         suggestedAction: 'Deliverable ready for vector memory indexing',
         timestamp: Date.now(),
         latencyMs: result.latencyMs,
@@ -109,12 +104,10 @@ export const AgentMeshDashboard: React.FC = () => {
       };
 
       setTelemetryLogs((prev) => [report, ...prev]);
-      agentRegistry.updateAgentStatus(selectedAgentId, 'idle', result.latencyMs, report.confidence);
     } catch (err: any) {
       setSandboxOutput(`Execution Error: ${err.message}`);
     } finally {
       setIsExecuting(false);
-      setAgents(agentRegistry.getAllAgents());
     }
   };
 
@@ -150,7 +143,7 @@ export const AgentMeshDashboard: React.FC = () => {
               <h2 className="font-mono text-base font-bold text-white flex items-center space-x-2">
                 <span>Multi-Modal Agent Capability Registry Matrix</span>
                 <span className="rounded-md bg-purple-950 px-2 py-0.5 text-[10px] text-purple-300 border border-purple-500/30">
-                  7 Specialized Agents
+                  HTTP REST Connected
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
@@ -204,7 +197,6 @@ export const AgentMeshDashboard: React.FC = () => {
                   {agent.description}
                 </p>
 
-                {/* Modalities Badges */}
                 <div className="flex flex-wrap gap-1 mb-3">
                   {agent.supportedInputModalities.map((mod) => (
                     <span
@@ -216,7 +208,6 @@ export const AgentMeshDashboard: React.FC = () => {
                   ))}
                 </div>
 
-                {/* Performance Metrics */}
                 <div className="flex items-center justify-between border-t border-indigo-950 pt-2 font-mono text-[10px] text-slate-400">
                   <span>Execs: <strong>{agent.totalExecutions}</strong></span>
                   <span>Avg Latency: <strong className="text-cyan-300">{agent.avgLatencyMs}ms</strong></span>
@@ -246,7 +237,6 @@ export const AgentMeshDashboard: React.FC = () => {
             )}
           </div>
 
-          {/* Model Selector & Config */}
           <div className="grid grid-cols-2 gap-3 font-mono text-xs">
             <div>
               <label className="block text-slate-400 mb-1">Target Model</label>
@@ -270,7 +260,6 @@ export const AgentMeshDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Prompt Input */}
           <div className="space-y-1">
             <label className="block font-mono text-xs text-slate-400">Agent Task Prompt</label>
             <textarea
@@ -292,10 +281,9 @@ export const AgentMeshDashboard: React.FC = () => {
             }`}
           >
             <Play className="h-4 w-4 fill-white" />
-            <span>{isExecuting ? 'Executing Agent Model Inference...' : 'Execute Agent Standalone'}</span>
+            <span>{isExecuting ? 'Executing Agent Model Inference...' : 'Execute Agent via Express REST Server'}</span>
           </button>
 
-          {/* Sandbox Output Box */}
           {sandboxOutput && (
             <div className="space-y-1 border-t border-indigo-950 pt-3">
               <label className="block font-mono text-xs text-slate-400">Agent Output Payload</label>
@@ -317,7 +305,6 @@ export const AgentMeshDashboard: React.FC = () => {
                 </h3>
               </div>
 
-              {/* Status Filter */}
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -331,7 +318,6 @@ export const AgentMeshDashboard: React.FC = () => {
               </select>
             </div>
 
-            {/* Live Event Cards Feed */}
             <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1 mt-3">
               {filteredTelemetry.map((report) => (
                 <div

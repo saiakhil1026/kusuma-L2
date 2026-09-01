@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download, RefreshCw, Award, Activity } from 'lucide-react';
-import { frameworkEvaluator } from '../engine/evaluationEngine';
+import { apiClient } from '../services/apiClient';
 import type { ComprehensiveEvaluationReport } from '../engine/evaluationEngine';
 
 export const EvaluationDashboard: React.FC = () => {
@@ -9,7 +9,7 @@ export const EvaluationDashboard: React.FC = () => {
   const [benchmarkProgress, setBenchmarkProgress] = useState(0);
 
   useEffect(() => {
-    frameworkEvaluator.runFullEvaluation().then((res) => setReport(res));
+    apiClient.runEvaluation().then((res) => setReport(res)).catch((err) => console.warn('Eval fetch error:', err));
   }, []);
 
   const handleRunBenchmarkSuite = async () => {
@@ -22,7 +22,7 @@ export const EvaluationDashboard: React.FC = () => {
     }, 200);
 
     try {
-      const freshReport = await frameworkEvaluator.runFullEvaluation();
+      const freshReport = await apiClient.runEvaluation();
       clearInterval(interval);
       setBenchmarkProgress(100);
       setReport(freshReport);
@@ -51,7 +51,7 @@ export const EvaluationDashboard: React.FC = () => {
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
       
       {/* Top Banner & Control */}
-      <div className="rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-2xl relative overflow-hidden tech-grid-pattern space-y-6">
+      <div className="rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl relative overflow-hidden tech-grid-pattern space-y-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
@@ -67,7 +67,7 @@ export const EvaluationDashboard: React.FC = () => {
               Empirical Evaluation & Benchmark Performance Matrix
             </h2>
             <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-              Calculated empirical precision, recall, claim-groundedness, tool call success rates, and reflection pass rates over versioned dataset <code className="text-cyan-300">evaluation/dataset/v1.json</code>.
+              Calculated empirical precision, recall, claim-groundedness, tool call success rates, and reflection pass rates over versioned dataset <code className="text-cyan-300">evaluation/dataset/v1.json</code> via Express REST API.
             </p>
           </div>
 
@@ -194,7 +194,7 @@ export const EvaluationDashboard: React.FC = () => {
               <div className="font-bold text-cyan-300 text-base">{String(report.offlineMetrics.precisionPct)}</div>
             </div>
 
-            <div className="rounded-xl border border-indigo-950 bg-nexus-900 p-3 space-y-1">
+            <div className="rounded-xl border border-indigo-950 bg-nexus-950 p-3 space-y-1">
               <span className="text-slate-400 text-[10px] uppercase">Recall</span>
               <div className="font-bold text-cyan-300 text-base">{String(report.offlineMetrics.recallPct)}</div>
             </div>

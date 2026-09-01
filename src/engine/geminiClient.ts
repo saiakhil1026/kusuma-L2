@@ -1,22 +1,10 @@
 import { GoogleGenAI } from '@google/genai';
 import type { ModelName, AgentId } from '../types';
 
-export function setGeminiApiKey(key: string) {
-  if (typeof process !== 'undefined' && process.env) {
-    process.env.GEMINI_API_KEY = key;
-  }
-}
-
 export function getGeminiApiKey(): string {
-  if (typeof process !== 'undefined' && process.env) {
-    if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
-    if (process.env.VITE_GEMINI_API_KEY) return process.env.VITE_GEMINI_API_KEY;
+  if (typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY) {
+    return process.env.GEMINI_API_KEY;
   }
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GEMINI_API_KEY) {
-      return import.meta.env.VITE_GEMINI_API_KEY;
-    }
-  } catch {}
   return '';
 }
 

@@ -1,50 +1,69 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Search, Filter, Zap, Activity, RefreshCw } from 'lucide-react';
-import type { VectorItem } from '../types';
-import { sharedVectorDB } from '../engine/vectorStore';
-import { semanticCache } from '../engine/semanticCache';
-import { INITIAL_AGENTS } from '../engine/agentRegistry';
+import type { VectorItem, IMultiModalAgent } from '../types';
+import { apiClient } from '../services/apiClient';
 
 export const VectorExplorer: React.FC = () => {
   const [vectors, setVectors] = useState<VectorItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Array<{ item: VectorItem; similarity: number }> | null>(null);
+  const [cacheCheck, setCacheCheck] = useState<{ hit: boolean; similarity: number; distance: number; latencyMs: number } | null>(null);
   const [hoveredVector, setHoveredVector] = useState<VectorItem | null>(null);
   const [selectedVector, setSelectedVector] = useState<VectorItem | null>(null);
   const [filterModality, setFilterModality] = useState<string>('all');
   const [customTextInput, setCustomTextInput] = useState('');
+  const [agents, setAgents] = useState<IMultiModalAgent[]>([]);
 
   useEffect(() => {
     refreshVectorList();
+    fetchAgents();
   }, []);
 
-  const refreshVectorList = () => {
-    setVectors(sharedVectorDB.getAllVectors());
+  const fetchAgents = async () => {
+    const list = await apiClient.getAgents();
+    setAgents(list);
   };
 
-  const handleSearch = () => {
+  const refreshVectorList = async () => {
+    try {
+      const list = await apiClient.getAllVectors();
+      setVectors(list);
+    } catch (err) {
+      console.warn('Vector list fetch failed:', err);
+    }
+  };
+
+  const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setSearchResults(null);
+      setCacheCheck(null);
       return;
     }
-    const results = sharedVectorDB.searchSimilar(searchQuery.trim(), 6);
-    setSearchResults(results);
+    try {
+      const data = await apiClient.searchVectors(searchQuery.trim(), 6);
+      setSearchResults(data.results);
+      setCacheCheck(data.cacheResult);
+    } catch (err) {
+      console.error('Vector search error:', err);
+    }
   };
 
-  const handleAddCustomVector = () => {
+  const handleAddCustomVector = async () => {
     if (!customTextInput.trim()) return;
-    sharedVectorDB.addVector(
-      customTextInput.trim(),
-      'orchestrator',
-      'Master Orchestrator Agent',
-      'text',
-      'User Custom Memory Injection'
-    );
-    setCustomTextInput('');
-    refreshVectorList();
+    try {
+      await apiClient.addVector(
+        customTextInput.trim(),
+        'orchestrator',
+        'Master Orchestrator Agent',
+        'text',
+        'User Custom Memory Injection'
+      );
+      setCustomTextInput('');
+      refreshVectorList();
+    } catch (err) {
+      console.error('Vector add error:', err);
+    }
   };
-
-  const cacheCheck = searchQuery.trim() ? semanticCache.checkCache(searchQuery.trim()) : null;
 
   const filteredVectors = vectors.filter((v) => {
     if (filterModality === 'all') return true;
@@ -52,7 +71,7 @@ export const VectorExplorer: React.FC = () => {
   });
 
   const getAgentColor = (agentId: string) => {
-    const agent = INITIAL_AGENTS.find((a) => a.id === agentId);
+    const agent = agents.find((a) => a.id === agentId);
     return agent ? agent.accentColor : '#06b6d4';
   };
 
@@ -69,11 +88,11 @@ export const VectorExplorer: React.FC = () => {
             <h2 className="font-mono text-base font-bold text-white flex items-center space-x-2">
               <span>Shared 768-Dimensional Vector Memory Store</span>
               <span className="rounded-md bg-cyan-950 px-2 py-0.5 text-[10px] text-cyan-300 border border-cyan-500/30">
-                Cosine Similarity Engine
+                HTTP REST Connected
               </span>
             </h2>
             <p className="text-xs text-slate-400">
-              Cross-agent high-dimensional memory space providing prerequisite context and sub-millisecond semantic caching.
+              Cross-agent high-dimensional memory space providing prerequisite context and sub-millisecond semantic caching via Express API server.
             </p>
           </div>
         </div>
@@ -89,8 +108,8 @@ export const VectorExplorer: React.FC = () => {
           </button>
 
           <button
-            onClick={() => {
-              sharedVectorDB.clearNonSeedVectors();
+            onClick={async () => {
+              await apiClient.clearVectors();
               refreshVectorList();
             }}
             className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-slate-400 hover:text-white"
@@ -103,7 +122,7 @@ export const VectorExplorer: React.FC = () => {
       {/* Main Grid: 2D Scatter Map & Cosine Search Sandbox */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* 2D Vector Projection Scatter Map (8 cols) */}
+        {/* 2D Vector Projection Scatter Map (7 cols) */}
         <div className="lg:col-span-7 rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl flex flex-col justify-between relative min-h-[460px] tech-grid-pattern">
           
           <div className="flex items-center justify-between mb-4 z-10">
@@ -133,8 +152,6 @@ export const VectorExplorer: React.FC = () => {
 
           {/* Interactive SVG Scatter Map Canvas */}
           <div className="relative w-full h-[320px] rounded-xl border border-indigo-950 bg-nexus-950/90 overflow-hidden flex items-center justify-center">
-            
-            {/* Center Grid Origin Axis Lines */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="w-full h-[1px] bg-indigo-950"></div>
               <div className="h-full w-[1px] bg-indigo-950 absolute"></div>
@@ -172,7 +189,6 @@ export const VectorExplorer: React.FC = () => {
               })}
             </svg>
 
-            {/* Hover Tooltip Box */}
             {hoveredVector && (
               <div className="absolute bottom-3 left-3 z-20 rounded-xl border border-indigo-500/40 bg-nexus-900/95 p-3 backdrop-blur-md shadow-xl text-xs max-w-sm pointer-events-none">
                 <div className="flex items-center justify-between font-mono text-[10px] text-cyan-300 mb-1">
@@ -208,7 +224,6 @@ export const VectorExplorer: React.FC = () => {
               </span>
             </div>
 
-            {/* Search Input */}
             <div className="flex space-x-2 mb-4">
               <input
                 type="text"
@@ -226,7 +241,6 @@ export const VectorExplorer: React.FC = () => {
               </button>
             </div>
 
-            {/* Semantic Cache Status Card */}
             {cacheCheck && (
               <div
                 className={`rounded-xl p-3 border font-mono text-xs mb-4 transition-all ${
@@ -258,7 +272,6 @@ export const VectorExplorer: React.FC = () => {
               </div>
             )}
 
-            {/* Search Results List */}
             {searchResults ? (
               <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                 <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest block mb-1">
@@ -282,12 +295,11 @@ export const VectorExplorer: React.FC = () => {
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-indigo-950 p-6 text-center text-slate-500 text-xs font-mono">
-                Enter any prompt above to calculate 768-D cosine similarity and test the in-memory semantic cache.
+                Enter any prompt above to calculate 768-D cosine similarity via Express REST server.
               </div>
             )}
           </div>
 
-          {/* Quick Custom Vector Injector */}
           <div className="border-t border-indigo-950 pt-3">
             <span className="font-mono text-[11px] text-slate-400 mb-1.5 block">
               Inject Custom Vector Memory
@@ -312,7 +324,6 @@ export const VectorExplorer: React.FC = () => {
 
       </div>
 
-      {/* Vector Detail Modal */}
       {selectedVector && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
           <div className="w-full max-w-lg rounded-2xl border border-indigo-500/30 bg-nexus-900 p-6 shadow-2xl space-y-4">

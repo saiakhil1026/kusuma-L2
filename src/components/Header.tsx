@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Network, Database, Cpu, BookOpen, ShieldCheck, Activity, Award } from 'lucide-react';
-import { semanticCache } from '../engine/semanticCache';
-import { sharedVectorDB } from '../engine/vectorStore';
+import { apiClient } from '../services/apiClient';
 
 interface HeaderProps {
   activeTab: 'CANVAS' | 'VECTOR DB' | 'AGENT MESH' | 'EVALUATION' | 'BLUEPRINT';
@@ -11,18 +10,21 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemetryCount }) => {
   const [stats, setStats] = useState({
-    vectorCount: sharedVectorDB.size(),
-    cacheHitRatio: semanticCache.getCacheHitRatio(),
+    vectorCount: 12,
+    cacheHitRatio: 88.5,
   });
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const fetchHealth = async () => {
+      const data = await apiClient.getHealthStats();
       setStats({
-        vectorCount: sharedVectorDB.size(),
-        cacheHitRatio: semanticCache.getCacheHitRatio(),
+        vectorCount: data.vectorCount,
+        cacheHitRatio: data.cacheHitRatioPct,
       });
-    }, 1000);
+    };
 
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -78,7 +80,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemet
         <div className="flex items-center space-x-3 font-mono text-xs">
           <div className="flex items-center space-x-1.5 rounded-lg bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 px-3 py-1.5">
             <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            <span>Server Environment Keys Active</span>
+            <span>Server REST API Active</span>
           </div>
         </div>
       </div>
