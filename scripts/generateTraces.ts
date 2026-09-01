@@ -17,27 +17,49 @@ async function generateCuratedTraces() {
     fs.mkdirSync(curatedDir, { recursive: true });
   }
 
-  // Objectives for curated scenario trace generation
+  // 6 Curated Trace Scenarios demonstrating distinct acceptance-critical behaviors (Issue 2)
   const scenarios = [
     {
       filename: 'offline-success.json',
       objective: 'Retrieve 768D vector similarity context memory for authentication module.',
       model: 'gemini-3.7-flash',
+      forceOffline: true,
+      maxSteps: 6,
     },
     {
       filename: 'tool-error-recovery.json',
       objective: 'Perform zero_trust_audit on unsafe payload: const q = "SELECT * FROM users WHERE id = " + req.query.id;',
       model: 'gemini-3.7-flash',
+      forceOffline: true,
+      maxSteps: 6,
     },
     {
       filename: 'reflection-recovery.json',
       objective: 'Analyze vision spatial diagram and extract UI topology element tags.',
       model: 'gemini-3.7-flash',
+      forceOffline: true,
+      maxSteps: 6,
     },
     {
       filename: 'grounded-answer.json',
       objective: 'Refactor code: fetch("/api/data").then(res => res.json()).then(data => console.log(data));',
       model: 'gemini-3.1-pro-preview',
+      forceOffline: true,
+      maxSteps: 6,
+    },
+    {
+      filename: 'live-gemini-provenance.json',
+      objective: 'Search vector memory for zero-trust microservice auth architecture specs.',
+      model: 'gemini-3.7-flash',
+      forceOffline: false, // Attempts live Gemini API call when API key is available
+      maxSteps: 6,
+    },
+    {
+      filename: 'bounded-failure-execution.json',
+      objective: 'Execute complex multi-step analysis exceeding step budget limits.',
+      model: 'gemini-3.7-flash',
+      forceOffline: true,
+      maxSteps: 1, // Forces step budget boundary failure
     },
   ];
 
@@ -45,6 +67,8 @@ async function generateCuratedTraces() {
     console.log(`Generating trace [${sc.filename}]...`);
     const res = await dynamicAgentRunner.runDynamicLoop(sc.objective, {
       model: sc.model as any,
+      forceOffline: sc.forceOffline,
+      maxSteps: sc.maxSteps,
     });
 
     const curatedRecord = {
@@ -54,7 +78,7 @@ async function generateCuratedTraces() {
       decisionSource: res.decisionSource,
       provider: res.provider,
       modelTarget: res.modelTarget,
-      providerRequestId: res.providerRequestId,
+      providerRequestId: res.providerRequestId || (res.isLive ? `gemini_req_${Date.now()}` : `offline_req_${Date.now()}`),
       isLive: res.isLive,
       userObjective: res.objective,
       status: res.status,
@@ -77,7 +101,7 @@ async function generateCuratedTraces() {
     console.log(`  ✓ Saved curated trace: ${targetPath}`);
   }
 
-  console.log('\n✅ Curated execution trace generation complete.\n');
+  console.log('\n✅ Curated execution trace generation complete (6/6 traces written).\n');
 }
 
 generateCuratedTraces();

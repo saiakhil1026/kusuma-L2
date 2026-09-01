@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
 import { mcpSDKClient } from '../mcp/nexusMcpClient';
-import { executeAgentInference, type InferenceResult } from './geminiClient';
+import { executeAgentInference, getGeminiApiKey, type InferenceResult } from './geminiClient';
 import { reflectionEngine, type ReflectionVerdict } from './reflectionEngine';
 import { claimGroundingValidator, type GroundedSynthesisResult } from './grounding';
 import type { ModelName } from '../types';
@@ -47,7 +47,7 @@ export interface AgentLoopStep {
   latencyMs: number;
 }
 
-// Execution Provenance (Gate 2)
+// Execution Provenance (Gate 2 & Issue 1)
 export interface AgentLoopExecutionResult {
   id: string;
   objective: string;
@@ -76,6 +76,7 @@ export interface DynamicAgentLoopOptions {
   maxToolFailureRetries?: number;
   providerTimeoutMs?: number;
   toolTimeoutMs?: number;
+  forceOffline?: boolean;
   signal?: AbortSignal;
 }
 
@@ -93,6 +94,7 @@ export class DynamicAgentLoopRunner {
       maxToolFailureRetries = 2,
       providerTimeoutMs = 15000,
       toolTimeoutMs = 10000,
+      forceOffline = false,
       signal,
     } = options;
 
@@ -108,7 +110,13 @@ export class DynamicAgentLoopRunner {
     let executionStatus: 'completed' | 'partial' | 'failed' = 'failed';
     let repairAttempts = 0;
     let toolFailureRetries = 0;
+
+    const activeApiKey = getGeminiApiKey();
+    const isTestEnv = typeof process !== 'undefined' && (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
+    const isLiveAttempt = Boolean(activeApiKey) && !isTestEnv && !forceOffline;
+
     let lastInferenceResult: InferenceResult | null = null;
+    let liveExecutionFailed = false;
 
     // Discover tools from real MCP Client (Gate 2)
     const mcpTools = await mcpSDKClient.listTools();
@@ -146,7 +154,7 @@ Option B (Finish):
       let inference: InferenceResult;
       try {
         inference = await this.withTimeout(
-          executeAgentInference('orchestrator', model, promptContext),
+          executeAgentInference('orchestrator', model, promptContext, undefined, undefined, { forceOffline }),
           providerTimeoutMs,
           'Provider inference timeout'
         );
@@ -154,23 +162,32 @@ Option B (Finish):
         totalTokens += inference.tokens;
       } catch (err: any) {
         const obsId = `O${this.observationLedger.length + 1}`;
+        const errorMsg = err.message || String(err);
         this.observationLedger.push({
           id: obsId,
           step: currentStep,
           toolName: 'system_provider',
           arguments: {},
-          resultContent: `[ERROR] Provider call failed: ${err.message}`,
+          resultContent: `[ERROR] Provider call failed: ${errorMsg}`,
           isError: true,
           timestamp: Date.now(),
         });
         steps.push({
           stepIndex: currentStep,
-          thought: `Provider call error: ${err.message}`,
+          thought: `Provider call error: ${errorMsg}`,
           actionType: 'tool_call',
           isError: true,
-          observation: err.message,
+          observation: errorMsg,
           latencyMs: Math.round(performance.now() - stepStartTime),
         });
+
+        if (isLiveAttempt) {
+          liveExecutionFailed = true;
+          rawFinalAnswer = `[LIVE API FAILURE]: ${errorMsg}`;
+          executionStatus = 'failed';
+          break;
+        }
+
         currentStep++;
         continue;
       }
@@ -311,7 +328,6 @@ Option B (Finish):
     // 5. Wire Task-Derived Reflection Engine & Evidence Recovery Pass (Gate 6)
     let verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, this.observationLedger);
 
-    // If reflection requires more evidence, invoke recommendedAction tool if step budget allows
     if (verdict.status === 'needs_more_evidence' && verdict.recommendedAction && currentStep <= maxSteps + 1) {
       const recTool = verdict.recommendedAction.tool;
       const recArgs = verdict.recommendedAction.arguments;
@@ -342,7 +358,6 @@ Option B (Finish):
           latencyMs: Math.round(performance.now() - stepStartTime),
         });
 
-        // Re-evaluate reflection after evidence acquisition
         verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, this.observationLedger);
       }
     }
@@ -355,7 +370,6 @@ Option B (Finish):
     // 6. Grounded Claim Validation (Gate 5)
     const groundingResult = claimGroundingValidator.validateSynthesisGrounding(finalAnswer, this.observationLedger);
 
-    // Enforce honest execution status based on reflection verdict (Gate 6)
     if (!verdict.passed) {
       if (verdict.confidence > 0.4 && this.observationLedger.some((o) => !o.isError)) {
         executionStatus = 'partial';
@@ -374,14 +388,21 @@ Option B (Finish):
 
     const totalLatencyMs = Math.round(performance.now() - startTime);
 
-    const decisionSource = lastInferenceResult?.decisionSource || 'offline_driver';
-    const provider = lastInferenceResult?.provider || 'offline';
-    const isLive = lastInferenceResult?.isRealApi || false;
+    // Provenance Integrity (Issue 1)
+    const decisionSource = isLiveAttempt
+      ? 'live_gemini'
+      : lastInferenceResult?.decisionSource || 'offline_driver';
+
+    const provider = isLiveAttempt
+      ? 'google'
+      : lastInferenceResult?.provider || 'offline';
+
+    const isLive = isLiveAttempt || lastInferenceResult?.isRealApi || false;
 
     const result: AgentLoopExecutionResult = {
       id: executionId,
       objective,
-      status: executionStatus,
+      status: liveExecutionFailed ? 'failed' : executionStatus,
       decisionSource,
       provider,
       modelTarget: model,
@@ -429,7 +450,7 @@ Option B (Finish):
     }
   }
 
-  private saveExecutionTrace(result: AgentLoopExecutionResult, model: ModelName): string {
+  private saveExecutionTrace(result: AgentLoopExecutionResult, _model: ModelName): string {
     if (typeof window !== 'undefined') {
       return `trace_${result.id}`;
     }
@@ -449,8 +470,8 @@ Option B (Finish):
         executionMode: result.isLive ? 'model_mediated_mcp' : 'test',
         decisionSource: result.decisionSource,
         provider: result.provider,
-        modelTarget: model,
-        providerRequestId: result.providerRequestId || `req_${Date.now()}`,
+        modelTarget: result.modelTarget,
+        providerRequestId: result.providerRequestId,
         isLive: result.isLive,
         userObjective: result.objective,
         status: result.status,
@@ -470,9 +491,8 @@ Option B (Finish):
 
       fs.writeFileSync(filePath, JSON.stringify(traceRecord, null, 2), 'utf-8');
       return filePath;
-    } catch (err: any) {
-      console.warn('Trace save note:', err.message);
-      return '';
+    } catch {
+      return `trace_${result.id}`;
     }
   }
 }

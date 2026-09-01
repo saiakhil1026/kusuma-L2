@@ -25,15 +25,17 @@ export async function executeAgentInference(
   model: ModelName,
   prompt: string,
   extraContext?: string,
-  imagePayload?: string
+  imagePayload?: string,
+  options?: { forceOffline?: boolean }
 ): Promise<InferenceResult> {
   const activeKey = getGeminiApiKey();
   const startTime = performance.now();
   const timestamp = new Date().toISOString();
 
   const isTestEnv = typeof process !== 'undefined' && (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
+  const shouldUseLiveApi = Boolean(activeKey) && !isTestEnv && !options?.forceOffline;
 
-  if (activeKey && !isTestEnv) {
+  if (shouldUseLiveApi) {
     try {
       const ai = new GoogleGenAI({ apiKey: activeKey });
 
@@ -60,7 +62,14 @@ export async function executeAgentInference(
 
       const text = response.text || 'No response text returned.';
       const latencyMs = Math.round(performance.now() - startTime);
-      const tokens = Math.max(12, Math.floor(text.length / 3.8));
+
+      // Token Accounting: Use actual provider-reported usageMetadata when available (Issue 1)
+      const providerTokens = response.usageMetadata?.totalTokenCount;
+      const tokens = typeof providerTokens === 'number' && providerTokens > 0
+        ? providerTokens
+        : Math.max(12, Math.floor(text.length / 3.8));
+
+      const providerRequestId = response.responseId || response.id || `gemini_req_${Date.now()}`;
 
       return {
         text,
@@ -70,11 +79,11 @@ export async function executeAgentInference(
         decisionSource: 'live_gemini',
         provider: 'google',
         modelTarget: model,
-        providerRequestId: response.responseId || `gemini_req_${Date.now()}`,
+        providerRequestId,
         timestamp,
       };
     } catch (err: any) {
-      throw new Error(`Live Gemini API Execution Failed: ${err.message || String(err)}`);
+      throw new Error(`Google Gemini Live API Call Failed: ${err.message || String(err)}`);
     }
   }
 
