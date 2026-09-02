@@ -7,9 +7,17 @@ export type AgentId =
   | 'guardrail' 
   | 'synthesizer';
 
-export type ModelName = 'gemini-3.7-flash' | 'gemini-3.1-pro-preview';
+export type ModelName = 'gemini-3.7-flash' | 'gemini-3.6-flash' | 'gemini-3.1-pro-preview';
 
 export type Modality = 'text' | 'vision' | 'code' | 'structured';
+
+export interface ExecutionProvenance {
+  localAttemptId: string;
+  providerRequestId: string | null;
+  decisionSource: 'live_gemini' | 'offline_driver';
+  provider: 'google' | 'offline';
+  isLive: boolean;
+}
 
 export interface IMultiModalAgent {
   id: AgentId;

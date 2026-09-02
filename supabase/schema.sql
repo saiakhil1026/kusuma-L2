@@ -193,9 +193,28 @@ BEGIN
   FROM nexus_vectors v
   WHERE 1 - (v.embedding <=> query_embedding) >= match_threshold
     AND (
-      request_owner_id IS NOT NULL AND v.owner_id = request_owner_id
+      v.owner_id = COALESCE(request_owner_id, (SELECT auth.uid())::text)
+      OR current_setting('role', true) = 'service_role'
     )
   ORDER BY v.embedding <=> query_embedding ASC
   LIMIT match_count;
 END;
 $$;
+
+-- ============================================================================
+-- 8. LEAST-PRIVILEGE GRANTS & REVOKES (Gate 9 & Issue 6)
+-- Prevents unauthorized anon access to exposed REST Data API schemas
+-- ============================================================================
+
+REVOKE ALL ON TABLE nexus_vectors FROM PUBLIC, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE nexus_vectors TO authenticated, service_role;
+
+REVOKE ALL ON TABLE nexus_dag_graphs FROM PUBLIC, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE nexus_dag_graphs TO authenticated, service_role;
+
+REVOKE ALL ON TABLE nexus_telemetry_logs FROM PUBLIC, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE nexus_telemetry_logs TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION match_nexus_vectors FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION match_nexus_vectors TO authenticated, service_role;
+

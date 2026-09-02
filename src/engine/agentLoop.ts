@@ -55,7 +55,8 @@ export interface AgentLoopExecutionResult {
   decisionSource: 'live_gemini' | 'offline_driver';
   provider: string;
   modelTarget: ModelName;
-  providerRequestId?: string;
+  localAttemptId: string;
+  providerRequestId: string | null;
   timestamp: string;
   isLive: boolean;
   steps: AgentLoopStep[];
@@ -81,8 +82,6 @@ export interface DynamicAgentLoopOptions {
 }
 
 export class DynamicAgentLoopRunner {
-  private observationLedger: ObservationItem[] = [];
-
   public async runDynamicLoop(
     objective: string,
     options: DynamicAgentLoopOptions = {}
@@ -101,7 +100,8 @@ export class DynamicAgentLoopRunner {
     const startTime = performance.now();
     const executionId = `trace_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const timestampStr = new Date().toISOString();
-    this.observationLedger = [];
+    // Mod3: Local observationLedger array per invocation to prevent concurrent execution race conditions
+    const observationLedger: ObservationItem[] = [];
     const steps: AgentLoopStep[] = [];
     let currentStep = 1;
     let isFinished = false;
@@ -135,8 +135,8 @@ export class DynamicAgentLoopRunner {
       const promptContext = `[Objective]: ${objective}
 [Observation Ledger]:
 ${
-  this.observationLedger.length > 0
-    ? JSON.stringify(this.observationLedger, null, 2)
+  observationLedger.length > 0
+    ? JSON.stringify(observationLedger, null, 2)
     : 'No observations recorded yet.'
 }
 
@@ -161,9 +161,9 @@ Option B (Finish):
         lastInferenceResult = inference;
         totalTokens += inference.tokens;
       } catch (err: any) {
-        const obsId = `O${this.observationLedger.length + 1}`;
+        const obsId = `O${observationLedger.length + 1}`;
         const errorMsg = err.message || String(err);
-        this.observationLedger.push({
+        observationLedger.push({
           id: obsId,
           step: currentStep,
           toolName: 'system_provider',
@@ -200,9 +200,9 @@ Option B (Finish):
         parsedAction = AgentActionSchema.parse(rawJson);
       } catch (err: any) {
         repairAttempts++;
-        const obsId = `O${this.observationLedger.length + 1}`;
+        const obsId = `O${observationLedger.length + 1}`;
         const errorMsg = `Malformed model action response: ${err.message}`;
-        this.observationLedger.push({
+        observationLedger.push({
           id: obsId,
           step: currentStep,
           toolName: 'system_validation',
@@ -237,9 +237,9 @@ Option B (Finish):
 
         if (!availableToolNames.has(tool)) {
           toolFailureRetries++;
-          const obsId = `O${this.observationLedger.length + 1}`;
+          const obsId = `O${observationLedger.length + 1}`;
           const errorMsg = `Tool '${tool}' is not registered in MCP server. Available tools: ${Array.from(availableToolNames).join(', ')}`;
-          this.observationLedger.push({
+          observationLedger.push({
             id: obsId,
             step: currentStep,
             toolName: tool,
@@ -282,7 +282,7 @@ Option B (Finish):
           toolResult = { content: `[ERROR] Tool execution failed: ${err.message}`, isError: true };
         }
 
-        const obsId = `O${this.observationLedger.length + 1}`;
+        const obsId = `O${observationLedger.length + 1}`;
         const obsItem: ObservationItem = {
           id: obsId,
           step: currentStep,
@@ -292,7 +292,7 @@ Option B (Finish):
           isError: Boolean(toolResult.isError),
           timestamp: Date.now(),
         };
-        this.observationLedger.push(obsItem);
+        observationLedger.push(obsItem);
 
         steps.push({
           stepIndex: currentStep,
@@ -325,41 +325,46 @@ Option B (Finish):
       executionStatus = 'failed';
     }
 
-    // 5. Wire Task-Derived Reflection Engine & Evidence Recovery Pass (Gate 6)
-    let verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, this.observationLedger);
+    // 5. Wire Task-Derived Reflection Engine & Multi-Step Evidence Recovery Loop (M5 & Gate 6)
+    let verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, observationLedger);
 
-    if (verdict.status === 'needs_more_evidence' && verdict.recommendedAction && currentStep <= maxSteps + 1) {
+    // Iterative recovery loop: Executes recommended tool actions while evidence is missing (M5)
+    // Strictly obeys global maxSteps budget (Issue 8)
+    while (verdict.status === 'needs_more_evidence' && verdict.recommendedAction && currentStep <= maxSteps) {
       const recTool = verdict.recommendedAction.tool;
       const recArgs = verdict.recommendedAction.arguments;
 
-      if (availableToolNames.has(recTool)) {
-        const stepStartTime = performance.now();
-        const recResult = await mcpSDKClient.callTool(recTool, recArgs);
-        const obsId = `O${this.observationLedger.length + 1}`;
-
-        this.observationLedger.push({
-          id: obsId,
-          step: currentStep,
-          toolName: recTool,
-          arguments: recArgs,
-          resultContent: recResult.content,
-          isError: Boolean(recResult.isError),
-          timestamp: Date.now(),
-        });
-
-        steps.push({
-          stepIndex: currentStep,
-          thought: `Reflection pass triggered automatic evidence acquisition tool '${recTool}'.`,
-          actionType: 'tool_call',
-          toolName: recTool,
-          toolArguments: recArgs,
-          isError: Boolean(recResult.isError),
-          observation: recResult.content,
-          latencyMs: Math.round(performance.now() - stepStartTime),
-        });
-
-        verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, this.observationLedger);
+      if (!availableToolNames.has(recTool)) {
+        break; // Stop if recommended tool is unavailable
       }
+
+      const stepStartTime = performance.now();
+      const recResult = await mcpSDKClient.callTool(recTool, recArgs);
+      const obsId = `O${observationLedger.length + 1}`;
+
+      observationLedger.push({
+        id: obsId,
+        step: currentStep,
+        toolName: recTool,
+        arguments: recArgs,
+        resultContent: recResult.content,
+        isError: Boolean(recResult.isError),
+        timestamp: Date.now(),
+      });
+
+      steps.push({
+        stepIndex: currentStep,
+        thought: `Reflection recovery pass (Step ${currentStep}/${maxSteps}) executed tool '${recTool}'.`,
+        actionType: 'tool_call',
+        toolName: recTool,
+        toolArguments: recArgs,
+        isError: Boolean(recResult.isError),
+        observation: recResult.content,
+        latencyMs: Math.round(performance.now() - stepStartTime),
+      });
+
+      verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, observationLedger);
+      currentStep++;
     }
 
     let finalAnswer = rawFinalAnswer;
@@ -367,18 +372,21 @@ Option B (Finish):
       finalAnswer = verdict.revisedOutput;
     }
 
-    // 6. Grounded Claim Validation (Gate 5)
-    const groundingResult = claimGroundingValidator.validateSynthesisGrounding(finalAnswer, this.observationLedger);
+    // 6. Grounded Claim Validation (Gate 5 & Issue 7)
+    const groundingResult = claimGroundingValidator.validateSynthesisGrounding(finalAnswer, observationLedger);
 
-    if (!verdict.passed) {
-      if (verdict.confidence > 0.4 && this.observationLedger.some((o) => !o.isError)) {
+    // Grounding & reflection impact execution status: completed cannot be returned if grounding failed or contradicted (Issue 7)
+    if (!verdict.passed || !groundingResult.passed) {
+      if (liveExecutionFailed) {
+        executionStatus = 'failed';
+      } else if (verdict.confidence > 0.4 && observationLedger.some((o) => !o.isError) && groundingResult.supportedClaimCount > 0) {
         executionStatus = 'partial';
       } else {
         executionStatus = 'failed';
       }
     }
 
-    const evidenceCitations = this.observationLedger
+    const evidenceCitations = observationLedger
       .filter((o) => !o.isError)
       .map((o) => `[Observation ${o.id}] (${o.toolName})`);
 
@@ -398,6 +406,8 @@ Option B (Finish):
       : lastInferenceResult?.provider || 'offline';
 
     const isLive = isLiveAttempt || lastInferenceResult?.isRealApi || false;
+    const localAttemptId = lastInferenceResult?.localAttemptId || executionId;
+    const providerRequestId = lastInferenceResult?.providerRequestId || null;
 
     const result: AgentLoopExecutionResult = {
       id: executionId,
@@ -406,11 +416,12 @@ Option B (Finish):
       decisionSource,
       provider,
       modelTarget: model,
-      providerRequestId: lastInferenceResult?.providerRequestId,
+      localAttemptId,
+      providerRequestId,
       timestamp: timestampStr,
       isLive,
       steps,
-      observations: this.observationLedger,
+      observations: observationLedger,
       finalAnswer,
       groundingResult,
       evidenceCitations,
@@ -466,6 +477,7 @@ Option B (Finish):
 
       const traceRecord = {
         executionId: result.id,
+        localAttemptId: result.localAttemptId,
         timestamp: result.timestamp,
         executionMode: result.isLive ? 'model_mediated_mcp' : 'test',
         decisionSource: result.decisionSource,

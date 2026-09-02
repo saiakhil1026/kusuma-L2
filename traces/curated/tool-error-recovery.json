@@ -1,80 +1,133 @@
 {
-  "executionId": "trace_1788257424667_nyknz",
-  "timestamp": "2026-09-01T10:10:24.667Z",
+  "executionId": "trace_1788340892615_28oj6",
+  "localAttemptId": "attempt_1788340892624_xbgsh",
+  "timestamp": "2026-09-02T09:21:32.615Z",
   "executionMode": "test",
   "decisionSource": "offline_driver",
   "provider": "offline",
   "modelTarget": "gemini-3.7-flash",
-  "providerRequestId": "offline_req_1788257424671",
+  "providerRequestId": null,
   "isLive": false,
-  "userObjective": "Perform zero_trust_audit on unsafe payload: const q = \"SELECT * FROM users WHERE id = \" + req.query.id;",
-  "status": "completed",
+  "userObjective": "Perform zero_trust_audit on unsafe payload (trigger_error_recovery): const q = \"SELECT * FROM users WHERE id = \" + req.query.id;",
+  "status": "failed",
   "steps": [
     {
       "stepIndex": 1,
-      "thought": "Model selected MCP tool 'zero_trust_audit' with arguments: {\"payloadToAudit\":\"Perform zero_trust_audit on unsafe payload: const q = \\\"SELECT * FROM users WHERE id = \\\" + req.query.id;\"}.",
+      "thought": "Attempted to invoke unregistered tool 'non_existent_tool'.",
       "actionType": "tool_call",
-      "toolName": "zero_trust_audit",
+      "toolName": "non_existent_tool",
       "toolArguments": {
-        "payloadToAudit": "Perform zero_trust_audit on unsafe payload: const q = \"SELECT * FROM users WHERE id = \" + req.query.id;"
+        "query": "trigger_error_recovery"
       },
-      "isError": false,
-      "observation": "{\n  \"status\": \"FAILED\",\n  \"passed\": false,\n  \"vulnerabilitiesCount\": 1,\n  \"vulnerabilities\": [\n    {\n      \"severity\": \"CRITICAL\",\n      \"category\": \"SQL Injection\",\n      \"description\": \"Detected raw string concatenation in SQL query with un-sanitized user input.\",\n      \"recommendation\": \"Use parameterized queries or prepared statements (e.g., $1, $2 or ORM binding).\"\n    }\n  ],\n  \"auditNotes\": \"Zero-Trust Safety Audit FAILED: Detected 1 security vulnerability issues!\"\n}",
-      "latencyMs": 2
+      "isError": true,
+      "observation": "Tool 'non_existent_tool' is not registered in MCP server. Available tools: vector_search, store_memory, refactor_code, zero_trust_audit, parse_vision_tags",
+      "latencyMs": 1
     },
     {
       "stepIndex": 2,
+      "thought": "Model selected MCP tool 'zero_trust_audit' with arguments: {\"payloadToAudit\":\"export class SecurityCheck { sanitize() { return true; } }\"}.",
+      "actionType": "tool_call",
+      "toolName": "zero_trust_audit",
+      "toolArguments": {
+        "payloadToAudit": "export class SecurityCheck { sanitize() { return true; } }"
+      },
+      "isError": false,
+      "observation": "{\n  \"status\": \"PASSED\",\n  \"passed\": true,\n  \"vulnerabilitiesCount\": 0,\n  \"vulnerabilities\": [],\n  \"auditNotes\": \"Zero-Trust Safety Audit PASSED: 0 injection vectors, 0 hardcoded secrets, strict schema validation enforced.\"\n}",
+      "latencyMs": 3
+    },
+    {
+      "stepIndex": 3,
       "thought": "Model issued finish decision after evidence gathering.",
       "actionType": "finish",
-      "latencyMs": 0
+      "latencyMs": 1
     }
   ],
   "observations": [
     {
       "id": "O1",
       "step": 1,
+      "toolName": "non_existent_tool",
+      "arguments": {
+        "query": "trigger_error_recovery"
+      },
+      "resultContent": "[ERROR] Tool 'non_existent_tool' is not registered in MCP server. Available tools: vector_search, store_memory, refactor_code, zero_trust_audit, parse_vision_tags",
+      "isError": true,
+      "timestamp": 1788340892620
+    },
+    {
+      "id": "O2",
+      "step": 2,
       "toolName": "zero_trust_audit",
       "arguments": {
-        "payloadToAudit": "Perform zero_trust_audit on unsafe payload: const q = \"SELECT * FROM users WHERE id = \" + req.query.id;"
+        "payloadToAudit": "export class SecurityCheck { sanitize() { return true; } }"
       },
-      "resultContent": "{\n  \"status\": \"FAILED\",\n  \"passed\": false,\n  \"vulnerabilitiesCount\": 1,\n  \"vulnerabilities\": [\n    {\n      \"severity\": \"CRITICAL\",\n      \"category\": \"SQL Injection\",\n      \"description\": \"Detected raw string concatenation in SQL query with un-sanitized user input.\",\n      \"recommendation\": \"Use parameterized queries or prepared statements (e.g., $1, $2 or ORM binding).\"\n    }\n  ],\n  \"auditNotes\": \"Zero-Trust Safety Audit FAILED: Detected 1 security vulnerability issues!\"\n}",
+      "resultContent": "{\n  \"status\": \"PASSED\",\n  \"passed\": true,\n  \"vulnerabilitiesCount\": 0,\n  \"vulnerabilities\": [],\n  \"auditNotes\": \"Zero-Trust Safety Audit PASSED: 0 injection vectors, 0 hardcoded secrets, strict schema validation enforced.\"\n}",
       "isError": false,
-      "timestamp": 1788257424671
+      "timestamp": 1788340892624
     }
   ],
   "reflectionVerdict": {
-    "status": "passed",
-    "passed": true,
-    "confidence": 1,
-    "unsupportedClaims": [],
+    "status": "failed",
+    "passed": false,
+    "confidence": 0.65,
+    "unsupportedClaims": [
+      "Draft answer ignored 1 tool execution failures recorded in ledger."
+    ],
     "missingRequirements": [],
     "requiredEvidence": [],
-    "auditNotes": "Reflection Audit Passed (Confidence: 100%): 100% grounded in task-derived MCP observations."
+    "revisedOutput": "[Grounded Revision Pass]:\nObjective: \"Perform zero_trust_audit on unsafe payload (trigger_error_recovery): const q = \"SELECT * FROM users WHERE id = \" + req.query.id;\"\n\nVerified Observations:\n- [Observation O2] (zero_trust_audit): Verified\n\n[Correction Notes]: Addressed missing requirements () and ungrounded claims (Draft answer ignored 1 tool execution failures recorded in ledger.).",
+    "auditNotes": "Reflection Audit Failed (Confidence: 65%): Found 1 unsupported claims and 0 missing requirements."
   },
   "groundingResult": {
     "claims": [
       {
-        "text": "Completed zero-trust safety audit and schema validation check. [Observation O1]",
+        "text": "Verified Observations:",
         "observationIds": [
-          "O1"
+          "O2"
         ],
-        "isSupported": true
+        "isSupported": false,
+        "isContradicted": false,
+        "supportStatus": "unsupported",
+        "reason": "Cited observation does not contain factual evidence supporting claim."
+      },
+      {
+        "text": "- [Observation O2] (zero_trust_audit): Verified",
+        "observationIds": [
+          "O2"
+        ],
+        "isSupported": false,
+        "isContradicted": false,
+        "supportStatus": "unsupported",
+        "reason": "Cited observation does not contain factual evidence supporting claim."
+      },
+      {
+        "text": "[Correction Notes]: Addressed missing requirements () and ungrounded claims (Draft answer ignored 1 tool execution failures recorded in ledger.).",
+        "observationIds": [
+          "O2"
+        ],
+        "isSupported": false,
+        "isContradicted": false,
+        "supportStatus": "unsupported",
+        "reason": "Cited observation does not contain factual evidence supporting claim."
       }
     ],
-    "answer": "Completed zero-trust safety audit and schema validation check. [Observation O1]",
-    "status": "grounded",
-    "supportedClaimCount": 1,
-    "totalClaimCount": 1,
-    "groundednessPct": 100
+    "answer": "[Grounded Revision Pass]:\nObjective: \"Perform zero_trust_audit on unsafe payload (trigger_error_recovery): const q = \"SELECT * FROM users WHERE id = \" + req.query.id;\"\n\nVerified Observations:\n- [Observation O2] (zero_trust_audit): Verified\n\n[Correction Notes]: Addressed missing requirements () and ungrounded claims (Draft answer ignored 1 tool execution failures recorded in ledger.).",
+    "status": "unsupported",
+    "supportedClaimCount": 0,
+    "unsupportedClaimsCount": 3,
+    "contradictedClaimCount": 0,
+    "totalClaimCount": 3,
+    "groundednessPct": 0,
+    "passed": false
   },
-  "finalAnswer": "Completed zero-trust safety audit and schema validation check. [Observation O1]",
+  "finalAnswer": "[Grounded Revision Pass]:\nObjective: \"Perform zero_trust_audit on unsafe payload (trigger_error_recovery): const q = \"SELECT * FROM users WHERE id = \" + req.query.id;\"\n\nVerified Observations:\n- [Observation O2] (zero_trust_audit): Verified\n\n[Correction Notes]: Addressed missing requirements () and ungrounded claims (Draft answer ignored 1 tool execution failures recorded in ledger.).",
   "evidenceCitations": [
-    "[Observation O1] (zero_trust_audit)"
+    "[Observation O2] (zero_trust_audit)"
   ],
   "metrics": {
-    "totalLatencyMs": 4,
-    "totalTokens": 82,
-    "observationCount": 1,
-    "errorCount": 0
+    "totalLatencyMs": 10,
+    "totalTokens": 95,
+    "observationCount": 2,
+    "errorCount": 1
   }
 }

@@ -399,13 +399,27 @@ export const DAGCanvas: React.FC = () => {
 
             {loopResult?.reflectionVerdict ? (
               <div className="space-y-3 font-mono text-xs">
-                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3.5 space-y-2">
+                <div className={`rounded-xl border p-3.5 space-y-2 ${
+                  loopResult.reflectionVerdict.passed
+                    ? 'border-emerald-500/40 bg-emerald-950/40'
+                    : loopResult.reflectionVerdict.status === 'needs_more_evidence'
+                    ? 'border-amber-500/40 bg-amber-950/40'
+                    : 'border-rose-500/40 bg-rose-950/40'
+                }`}>
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-emerald-300 flex items-center space-x-1">
+                    <span className={`font-bold flex items-center space-x-1 ${
+                      loopResult.reflectionVerdict.passed
+                        ? 'text-emerald-300'
+                        : loopResult.reflectionVerdict.status === 'needs_more_evidence'
+                        ? 'text-amber-300'
+                        : 'text-rose-300'
+                    }`}>
                       <CheckSquare className="h-4 w-4" />
-                      <span>Audit Verdict: PASSED</span>
+                      <span>Audit Verdict: {loopResult.reflectionVerdict.status === 'passed' ? 'PASSED' : loopResult.reflectionVerdict.status === 'needs_more_evidence' ? 'NEEDS EVIDENCE' : 'FAILED'}</span>
                     </span>
-                    <span className="text-emerald-300 font-bold">
+                    <span className={`font-bold ${
+                      loopResult.reflectionVerdict.passed ? 'text-emerald-300' : loopResult.reflectionVerdict.status === 'needs_more_evidence' ? 'text-amber-300' : 'text-rose-300'
+                    }`}>
                       {(loopResult.reflectionVerdict.confidence * 100).toFixed(0)}%
                     </span>
                   </div>

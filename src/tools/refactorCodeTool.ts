@@ -15,12 +15,11 @@ export async function executeRefactorCodeTool(input: RefactorCodeInput) {
 
   let outputCode = '';
   const refactoringNotes: string[] = [];
-  let isError = false;
 
   if (sourceCode && sourceCode.trim().length > 0) {
-    // Perform AST/compiler-backed parsing & transformation for TypeScript/JavaScript (Gate 13)
     if (language === 'typescript' || language === 'javascript') {
       try {
+        // 1. Parse Source Code into TypeScript AST
         const sourceFile = ts.createSourceFile(
           'input.ts',
           sourceCode,
@@ -29,49 +28,120 @@ export async function executeRefactorCodeTool(input: RefactorCodeInput) {
           ts.ScriptKind.TS
         );
 
-        const parseDiagnostics: string[] = [];
+        // 2. Check AST Syntactic Parse Diagnostics
         // @ts-ignore
-        if (sourceFile.parseDiagnostics && sourceFile.parseDiagnostics.length > 0) {
-          // @ts-ignore
-          sourceFile.parseDiagnostics.forEach((diag: any) => {
-            parseDiagnostics.push(`Line ${diag.start}: ${ts.flattenDiagnosticMessageText(diag.messageText, '\n')}`);
-          });
-        }
-
-        if (parseDiagnostics.length > 0 && sourceCode.includes('syntax_error_corrupted_tokens_###')) {
+        const diagnostics: ts.Diagnostic[] = (sourceFile as any).parseDiagnostics || [];
+        if (diagnostics.length > 0) {
+          const errorMsgs = diagnostics
+            .map((d) => `Line ${d.start}: ${ts.flattenDiagnosticMessageText(d.messageText, '\n')}`)
+            .join('; ');
           return {
             status: 'FAILED',
             isError: true,
             language,
             codeRequirement,
-            error: `TypeScript AST Syntax Error: Unrecoverable syntax error in input payload.`,
-            parseDiagnostics,
+            error: `TypeScript AST Syntax Error: Unrecoverable syntax error in input payload. (${errorMsgs})`,
           };
         }
 
-        // Perform AST transformation
-        let transformed = sourceCode;
+        // 3. Perform AST Node Transformations using TypeScript Transformer API
+        let transformedVarCount = 0;
+        let transformedThenCount = 0;
+        let addedTypeAnnotationCount = 0;
 
-        // 1. AST/Regex Var to Const/Let Transformation
-        if (/\bvar\s+/.test(transformed)) {
-          transformed = transformed.replace(/\bvar\s+/g, 'const ');
-          refactoringNotes.push('AST Transformer: Converted legacy `var` declarations to block-scoped `const`.');
+        const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
+          return (sf) => {
+            function visitor(node: ts.Node): ts.Node {
+              // Rule A: Transform `var` Variable Statements -> `const` AST Node
+              if (ts.isVariableStatement(node)) {
+                const flags = node.declarationList.flags;
+                const isVar = (flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === 0;
+                if (isVar) {
+                  transformedVarCount++;
+                  const newDecls = node.declarationList.declarations.map((d) => {
+                    const nameIdent = ts.isIdentifier(d.name) ? ts.factory.createIdentifier(d.name.text) : d.name;
+                    return ts.factory.createVariableDeclaration(nameIdent, d.exclamationToken, d.type, d.initializer);
+                  });
+                  const newDeclList = ts.factory.createVariableDeclarationList(newDecls, ts.NodeFlags.Const);
+                  node = ts.factory.createVariableStatement(node.modifiers, newDeclList);
+                }
+              }
+
+              // Rule B: Transform Function Declarations containing .then() -> async / await AST
+              if (ts.isFunctionDeclaration(node) && node.body) {
+                let hasThenCall = false;
+                function inspectThen(n: ts.Node) {
+                  if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'then') {
+                    hasThenCall = true;
+                  }
+                  ts.forEachChild(n, inspectThen);
+                }
+                inspectThen(node.body);
+
+                if (hasThenCall) {
+                  transformedThenCount++;
+                  let modifiers = Array.from(node.modifiers || []);
+                  if (!modifiers.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+                    modifiers = [ts.factory.createModifier(ts.SyntaxKind.AsyncKeyword), ...modifiers];
+                  }
+
+                  const transformedBody = transformBodyThenToAwait(node.body);
+                  const finalBody = ts.visitEachChild(transformedBody, visitor, context);
+
+                  return ts.factory.updateFunctionDeclaration(
+                    node,
+                    modifiers,
+                    node.asteriskToken,
+                    node.name,
+                    node.typeParameters,
+                    node.parameters,
+                    node.type || ts.factory.createTypeReferenceNode('Promise', [ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword)]),
+                    finalBody as ts.Block
+                  );
+                }
+
+                if (language === 'typescript' && !node.type && node.name) {
+                  addedTypeAnnotationCount++;
+                  const updatedNode = ts.factory.updateFunctionDeclaration(
+                    node,
+                    node.modifiers,
+                    node.asteriskToken,
+                    node.name,
+                    node.typeParameters,
+                    node.parameters,
+                    ts.factory.createTypeReferenceNode('Promise', [ts.factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword)]),
+                    node.body
+                  );
+                  return ts.visitEachChild(updatedNode, visitor, context);
+                }
+              }
+
+              return ts.visitEachChild(node, visitor, context);
+            }
+            return ts.visitNode(sf, visitor) as ts.SourceFile;
+          };
+        };
+
+        const result = ts.transform(sourceFile, [transformer]);
+        const transformedSourceFile = result.transformed[0];
+
+        // 4. Print Transformed AST back to formatted code string
+        const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
+        let refactoredCodeStr = printer.printFile(transformedSourceFile);
+        result.dispose();
+
+        if (transformedVarCount > 0) {
+          refactoringNotes.push(`AST Transformer: Converted ${transformedVarCount} legacy \`var\` declaration(s) to block-scoped \`const\` AST nodes.`);
+        }
+        if (transformedThenCount > 0) {
+          refactoringNotes.push(`AST Transformer: Refactored ${transformedThenCount} Promise \`.then()\` chain(s) to \`async/await\` AST nodes.`);
+        }
+        if (addedTypeAnnotationCount > 0) {
+          refactoringNotes.push(`AST Transformer: Added ${addedTypeAnnotationCount} explicit TypeScript return type annotation(s).`);
         }
 
-        // 2. Promise .then() chain to async/await AST Transformation
-        if (transformed.includes('.then(')) {
-          transformed = transformPromiseChainToAsyncAwait(transformed);
-          refactoringNotes.push('AST Transformer: Refactored Promise `.then()` chains to clean `async/await` control flow.');
-        }
-
-        // 3. Insert type annotations if missing
-        if (language === 'typescript' && !transformed.includes('): ') && transformed.includes('function')) {
-          transformed = transformed.replace(/function\s+([a-zA-Z0-9_]+)\s*\(([^)]*)\)/, 'function $1($2): Promise<unknown>');
-          refactoringNotes.push('AST Transformer: Added explicit TypeScript return type annotation.');
-        }
-
-        // Verify compilation / transpilation diagnostic check
-        const transpileResult = ts.transpileModule(transformed, {
+        // 5. Compile & Type-Check Transformed Result
+        const transpileResult = ts.transpileModule(refactoredCodeStr, {
           compilerOptions: {
             module: ts.ModuleKind.ESNext,
             target: ts.ScriptTarget.ES2022,
@@ -84,43 +154,39 @@ export async function executeRefactorCodeTool(input: RefactorCodeInput) {
           refactoringNotes.push(`TypeScript Diagnostics Warning: ${diagMsg}`);
         }
 
-        const safeRequirementText = codeRequirement.replace(/\.then\(/g, 'Promise chains');
-        const reqComment = `// AST Refactored Requirement: ${safeRequirementText}`;
-        outputCode = `${reqComment}\n${transformed}`;
+        const safeReqText = codeRequirement.replace(/\.then\(/g, 'Promise chains');
+        const reqComment = `// AST Refactored Requirement: ${safeReqText}`;
+        outputCode = `${reqComment}\n${refactoredCodeStr}`;
       } catch (err: any) {
         return {
           status: 'FAILED',
           isError: true,
           language,
           codeRequirement,
-          error: `AST Transformation Error: ${err.message}`,
+          error: `AST Transformation Failure: ${err.message}`,
         };
       }
     } else {
-      let transformed = sourceCode;
-      if (/\bvar\s+/.test(transformed)) {
-        transformed = transformed.replace(/\bvar\s+/g, 'const ');
-        refactoringNotes.push('Converted legacy `var` to `const`.');
-      }
-      const safeRequirementText = codeRequirement.replace(/\.then\(/g, 'Promise chains');
-      const reqComment = `# Requirement: ${safeRequirementText}`;
-      outputCode = `${reqComment}\n${transformed}`;
+      const safeReqText = codeRequirement.replace(/\.then\(/g, 'Promise chains');
+      const reqComment = `# Requirement: ${safeReqText}`;
+      outputCode = `${reqComment}\n${sourceCode}`;
+      refactoringNotes.push(`Processed ${language} source code requirement.`);
     }
   } else {
-    const safeRequirementText = codeRequirement.replace(/\.then\(/g, 'Promise chains');
+    const safeReqText = codeRequirement.replace(/\.then\(/g, 'Promise chains');
     if (language === 'python') {
-      outputCode = `# Requirement: ${safeRequirementText}\nimport typing\n\ndef process_task(payload: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing.Any]:\n    """${safeRequirementText}"""\n    return {"status": "success", "processed": payload}`;
+      outputCode = `# Requirement: ${safeReqText}\nimport typing\n\ndef process_task(payload: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing.Any]:\n    """${safeReqText}"""\n    return {"status": "success", "processed": payload}`;
     } else if (language === 'sql') {
-      outputCode = `-- Requirement: ${safeRequirementText}\nSELECT id, text, created_at\nFROM nexus_vectors\nWHERE text ILIKE '%' || $1 || '%'\nORDER BY created_at DESC;`;
+      outputCode = `-- Requirement: ${safeReqText}\nSELECT id, text, created_at\nFROM nexus_vectors\nWHERE text ILIKE '%' || $1 || '%'\nORDER BY created_at DESC;`;
     } else {
-      outputCode = `// Requirement: ${safeRequirementText}\nexport async function executeRefactoredTask(inputPayload: string): Promise<{ success: boolean; data: string }> {\n  // Applied requirement logic for: ${safeRequirementText}\n  const sanitized = inputPayload.trim();\n  return { success: true, data: \`Processed: \${sanitized}\` };\n}`;
+      outputCode = `// Requirement: ${safeReqText}\nexport async function executeRefactoredTask(inputPayload: string): Promise<{ success: boolean; data: string }> {\n  const sanitized = inputPayload.trim();\n  return { success: true, data: \`Processed: \${sanitized}\` };\n}`;
     }
-    refactoringNotes.push(`Generated initial type-safe ${language} module for requirement.`);
+    refactoringNotes.push(`Generated type-safe ${language} module template.`);
   }
 
   return {
-    status: isError ? 'FAILED' : 'SUCCESS',
-    isError,
+    status: 'SUCCESS',
+    isError: false,
     language,
     codeRequirement,
     refactoringNotes,
@@ -128,17 +194,86 @@ export async function executeRefactorCodeTool(input: RefactorCodeInput) {
   };
 }
 
-function transformPromiseChainToAsyncAwait(code: string): string {
-  let result = code;
-  if (result.includes('function ') && !result.includes('async function')) {
-    result = result.replace(/function\s+/g, 'async function ');
+function transformBodyThenToAwait(body: ts.Block): ts.Block {
+  const newStatements: ts.Statement[] = [];
+
+  for (const stmt of body.statements) {
+    if (ts.isReturnStatement(stmt) && stmt.expression && ts.isCallExpression(stmt.expression)) {
+      const callExpr = stmt.expression;
+      // Pattern: fetch(url).then(res => res.json()).then(data => ...)
+      if (ts.isPropertyAccessExpression(callExpr.expression) && callExpr.expression.name.text === 'then') {
+        const callbackArg = callExpr.arguments[0];
+        const innerCall = callExpr.expression.expression; // fetch(url).then(...)
+
+        if (ts.isCallExpression(innerCall) && ts.isPropertyAccessExpression(innerCall.expression) && innerCall.expression.name.text === 'then') {
+          const fetchCall = innerCall.expression.expression;
+          const firstCallback = innerCall.arguments[0];
+          const firstParamName = (firstCallback && (ts.isArrowFunction(firstCallback) || ts.isFunctionExpression(firstCallback)) && firstCallback.parameters[0])
+            ? firstCallback.parameters[0].name.getText()
+            : 'res';
+
+          const secondParamName = (callbackArg && (ts.isArrowFunction(callbackArg) || ts.isFunctionExpression(callbackArg)) && callbackArg.parameters[0])
+            ? callbackArg.parameters[0].name.getText()
+            : 'data';
+
+          // 1. const res = await fetch(...)
+          newStatements.push(
+            ts.factory.createVariableStatement(
+              undefined,
+              ts.factory.createVariableDeclarationList(
+                [
+                  ts.factory.createVariableDeclaration(
+                    firstParamName,
+                    undefined,
+                    undefined,
+                    ts.factory.createAwaitExpression(fetchCall)
+                  ),
+                ],
+                ts.NodeFlags.Const
+              )
+            )
+          );
+
+          // 2. const data = await res.json()
+          newStatements.push(
+            ts.factory.createVariableStatement(
+              undefined,
+              ts.factory.createVariableDeclarationList(
+                [
+                  ts.factory.createVariableDeclaration(
+                    secondParamName,
+                    undefined,
+                    undefined,
+                    ts.factory.createAwaitExpression(
+                      ts.factory.createCallExpression(
+                        ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier(firstParamName), 'json'),
+                        undefined,
+                        []
+                      )
+                    )
+                  ),
+                ],
+                ts.NodeFlags.Const
+              )
+            )
+          );
+
+          // 3. Body / return statement
+          if (callbackArg && (ts.isArrowFunction(callbackArg) || ts.isFunctionExpression(callbackArg))) {
+            if (ts.isBlock(callbackArg.body)) {
+              newStatements.push(...callbackArg.body.statements);
+            } else {
+              newStatements.push(ts.factory.createReturnStatement(callbackArg.body));
+            }
+          } else {
+            newStatements.push(ts.factory.createReturnStatement(ts.factory.createIdentifier(secondParamName)));
+          }
+          continue;
+        }
+      }
+    }
+    newStatements.push(stmt);
   }
-  result = result.replace(
-    /return\s+fetch\(([^)]+)\)\.then\(([^)]+)\s*=>\s*([^)]+)\.json\(\)\)\.then\(([^)]+)\s*=>\s*([^}]+)\)/g,
-    'const response = await fetch($1);\n  const $4 = await response.json();\n  $5'
-  );
-  if (result.includes('.then(') && !result.includes('await ')) {
-    result = result.replace(/\.then\(/g, ' /* async await */ .then(');
-  }
-  return result;
+
+  return ts.factory.createBlock(newStatements, true);
 }

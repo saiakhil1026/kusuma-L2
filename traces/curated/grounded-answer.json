@@ -1,11 +1,12 @@
 {
-  "executionId": "trace_1788257424677_4difh",
-  "timestamp": "2026-09-01T10:10:24.677Z",
+  "executionId": "trace_1788340892640_ts7mt",
+  "localAttemptId": "attempt_1788340892648_684na",
+  "timestamp": "2026-09-02T09:21:32.640Z",
   "executionMode": "test",
   "decisionSource": "offline_driver",
   "provider": "offline",
   "modelTarget": "gemini-3.1-pro-preview",
-  "providerRequestId": "offline_req_1788257424679",
+  "providerRequestId": null,
   "isLive": false,
   "userObjective": "Refactor code: fetch(\"/api/data\").then(res => res.json()).then(data => console.log(data));",
   "status": "completed",
@@ -20,14 +21,14 @@
         "language": "typescript"
       },
       "isError": false,
-      "observation": "{\n  \"status\": \"SUCCESS\",\n  \"isError\": false,\n  \"language\": \"typescript\",\n  \"codeRequirement\": \"Refactor code: fetch(\\\"/api/data\\\").then(res => res.json()).then(data => console.log(data));\",\n  \"refactoringNotes\": [\n    \"Generated initial type-safe typescript module for requirement.\"\n  ],\n  \"refactoredCode\": \"// Requirement: Refactor code: fetch(\\\"/api/data\\\")Promise chainsres => res.json())Promise chainsdata => console.log(data));\\nexport async function executeRefactoredTask(inputPayload: string): Promise<{ success: boolean; data: string }> {\\n  // Applied requirement logic for: Refactor code: fetch(\\\"/api/data\\\")Promise chainsres => res.json())Promise chainsdata => console.log(data));\\n  const sanitized = inputPayload.trim();\\n  return { success: true, data: `Processed: ${sanitized}` };\\n}\"\n}",
-      "latencyMs": 1
+      "observation": "{\n  \"status\": \"SUCCESS\",\n  \"isError\": false,\n  \"language\": \"typescript\",\n  \"codeRequirement\": \"Refactor code: fetch(\\\"/api/data\\\").then(res => res.json()).then(data => console.log(data));\",\n  \"refactoringNotes\": [\n    \"Generated type-safe typescript module template.\"\n  ],\n  \"refactoredCode\": \"// Requirement: Refactor code: fetch(\\\"/api/data\\\")Promise chainsres => res.json())Promise chainsdata => console.log(data));\\nexport async function executeRefactoredTask(inputPayload: string): Promise<{ success: boolean; data: string }> {\\n  const sanitized = inputPayload.trim();\\n  return { success: true, data: `Processed: ${sanitized}` };\\n}\"\n}",
+      "latencyMs": 3
     },
     {
       "stepIndex": 2,
       "thought": "Model issued finish decision after evidence gathering.",
       "actionType": "finish",
-      "latencyMs": 0
+      "latencyMs": 1
     }
   ],
   "observations": [
@@ -39,9 +40,9 @@
         "codeRequirement": "Refactor code: fetch(\"/api/data\").then(res => res.json()).then(data => console.log(data));",
         "language": "typescript"
       },
-      "resultContent": "{\n  \"status\": \"SUCCESS\",\n  \"isError\": false,\n  \"language\": \"typescript\",\n  \"codeRequirement\": \"Refactor code: fetch(\\\"/api/data\\\").then(res => res.json()).then(data => console.log(data));\",\n  \"refactoringNotes\": [\n    \"Generated initial type-safe typescript module for requirement.\"\n  ],\n  \"refactoredCode\": \"// Requirement: Refactor code: fetch(\\\"/api/data\\\")Promise chainsres => res.json())Promise chainsdata => console.log(data));\\nexport async function executeRefactoredTask(inputPayload: string): Promise<{ success: boolean; data: string }> {\\n  // Applied requirement logic for: Refactor code: fetch(\\\"/api/data\\\")Promise chainsres => res.json())Promise chainsdata => console.log(data));\\n  const sanitized = inputPayload.trim();\\n  return { success: true, data: `Processed: ${sanitized}` };\\n}\"\n}",
+      "resultContent": "{\n  \"status\": \"SUCCESS\",\n  \"isError\": false,\n  \"language\": \"typescript\",\n  \"codeRequirement\": \"Refactor code: fetch(\\\"/api/data\\\").then(res => res.json()).then(data => console.log(data));\",\n  \"refactoringNotes\": [\n    \"Generated type-safe typescript module template.\"\n  ],\n  \"refactoredCode\": \"// Requirement: Refactor code: fetch(\\\"/api/data\\\")Promise chainsres => res.json())Promise chainsdata => console.log(data));\\nexport async function executeRefactoredTask(inputPayload: string): Promise<{ success: boolean; data: string }> {\\n  const sanitized = inputPayload.trim();\\n  return { success: true, data: `Processed: ${sanitized}` };\\n}\"\n}",
       "isError": false,
-      "timestamp": 1788257424679
+      "timestamp": 1788340892647
     }
   ],
   "reflectionVerdict": {
@@ -60,21 +61,26 @@
         "observationIds": [
           "O1"
         ],
-        "isSupported": true
+        "isSupported": true,
+        "isContradicted": false,
+        "supportStatus": "supported"
       }
     ],
     "answer": "Synthesized type-safe code implementation matching requirement. [Observation O1]",
     "status": "grounded",
     "supportedClaimCount": 1,
+    "unsupportedClaimsCount": 0,
+    "contradictedClaimCount": 0,
     "totalClaimCount": 1,
-    "groundednessPct": 100
+    "groundednessPct": 100,
+    "passed": true
   },
   "finalAnswer": "Synthesized type-safe code implementation matching requirement. [Observation O1]",
   "evidenceCitations": [
     "[Observation O1] (refactor_code)"
   ],
   "metrics": {
-    "totalLatencyMs": 3,
+    "totalLatencyMs": 9,
     "totalTokens": 86,
     "observationCount": 1,
     "errorCount": 0

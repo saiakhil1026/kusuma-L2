@@ -1,11 +1,12 @@
 {
-  "executionId": "trace_1788257424672_lgrph",
-  "timestamp": "2026-09-01T10:10:24.672Z",
+  "executionId": "trace_1788340892629_udqvm",
+  "localAttemptId": "attempt_1788340892635_y7vtm",
+  "timestamp": "2026-09-02T09:21:32.629Z",
   "executionMode": "test",
   "decisionSource": "offline_driver",
   "provider": "offline",
   "modelTarget": "gemini-3.7-flash",
-  "providerRequestId": "offline_req_1788257424675",
+  "providerRequestId": null,
   "isLive": false,
   "userObjective": "Analyze vision spatial diagram and extract UI topology element tags.",
   "status": "completed",
@@ -20,13 +21,13 @@
       },
       "isError": false,
       "observation": "{\n  \"status\": \"PROCESSED\",\n  \"isError\": false,\n  \"modality\": \"vision_prompt_analysis\",\n  \"extractedElements\": [\n    {\n      \"label\": \"Parsed Scene Element: Analyze vision spatial diagram and extra\",\n      \"boundingBox\": [\n        0.25,\n        0.25,\n        0.75,\n        0.75\n      ],\n      \"confidence\": 0.88\n    }\n  ],\n  \"sceneSummary\": \"Dynamic vision spatial tag extraction for prompt: \\\"Analyze vision spatial diagram and extract UI topology element tags.\\\"\"\n}",
-      "latencyMs": 1
+      "latencyMs": 3
     },
     {
       "stepIndex": 2,
       "thought": "Model issued finish decision after evidence gathering.",
       "actionType": "finish",
-      "latencyMs": 0
+      "latencyMs": 1
     }
   ],
   "observations": [
@@ -39,7 +40,7 @@
       },
       "resultContent": "{\n  \"status\": \"PROCESSED\",\n  \"isError\": false,\n  \"modality\": \"vision_prompt_analysis\",\n  \"extractedElements\": [\n    {\n      \"label\": \"Parsed Scene Element: Analyze vision spatial diagram and extra\",\n      \"boundingBox\": [\n        0.25,\n        0.25,\n        0.75,\n        0.75\n      ],\n      \"confidence\": 0.88\n    }\n  ],\n  \"sceneSummary\": \"Dynamic vision spatial tag extraction for prompt: \\\"Analyze vision spatial diagram and extract UI topology element tags.\\\"\"\n}",
       "isError": false,
-      "timestamp": 1788257424675
+      "timestamp": 1788340892635
     }
   ],
   "reflectionVerdict": {
@@ -58,21 +59,26 @@
         "observationIds": [
           "O1"
         ],
-        "isSupported": true
+        "isSupported": true,
+        "isContradicted": false,
+        "supportStatus": "supported"
       }
     ],
     "answer": "Completed vision spatial diagram analytics. [Observation O1]",
     "status": "grounded",
     "supportedClaimCount": 1,
+    "unsupportedClaimsCount": 0,
+    "contradictedClaimCount": 0,
     "totalClaimCount": 1,
-    "groundednessPct": 100
+    "groundednessPct": 100,
+    "passed": true
   },
   "finalAnswer": "Completed vision spatial diagram analytics. [Observation O1]",
   "evidenceCitations": [
     "[Observation O1] (parse_vision_tags)"
   ],
   "metrics": {
-    "totalLatencyMs": 3,
+    "totalLatencyMs": 7,
     "totalTokens": 66,
     "observationCount": 1,
     "errorCount": 0

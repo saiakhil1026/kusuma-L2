@@ -87,7 +87,16 @@ export const AgentMeshDashboard: React.FC = () => {
 
       setSandboxOutput(result.text);
 
-      const empiricalConfidence = result.isRealApi ? 0.99 : 0.95;
+      // C4: Derive confidence from actual response characteristics, not hardcoded
+      const responseLen = (result.text || '').length;
+      const hasSubstantiveContent = responseLen > 20;
+      const latencyReasonable = result.latencyMs < 15000;
+      let empiricalConfidence = 0.5; // Base: we got a response
+      if (hasSubstantiveContent) empiricalConfidence += 0.2;
+      if (latencyReasonable) empiricalConfidence += 0.1;
+      if (result.tokens > 10) empiricalConfidence += 0.1;
+      if (result.isRealApi) empiricalConfidence += 0.1; // Live API gets a small bonus
+      empiricalConfidence = Math.min(1.0, empiricalConfidence);
 
       const report: AgentFeedbackReport = {
         id: `rep_${Date.now()}`,

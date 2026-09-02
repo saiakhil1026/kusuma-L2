@@ -10,6 +10,9 @@ import { getGeminiApiKey } from './geminiClient';
 
 /**
  * Generates a 768-dimensional vector embedding for text.
+ * NOTE (M6): In live mode with GEMINI_API_KEY, this uses Google Gemini's `text-embedding-004`.
+ * In offline/local mode, this uses a deterministic 768D harmonic n-gram feature projection algorithm.
+ * The local mode is for fast, zero-dependency offline testing — it is not a neural language model embedding.
  */
 export function generate768DEmbedding(text: string): number[] {
   const DIMENSIONS = 768;
@@ -67,6 +70,8 @@ export function generate768DEmbedding(text: string): number[] {
 
   return normalizeVector(vector);
 }
+
+export const generateHashEmbedding = generate768DEmbedding;
 
 /**
  * Async Google Gemini "text-embedding-004" Model Fetcher

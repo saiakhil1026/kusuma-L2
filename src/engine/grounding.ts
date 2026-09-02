@@ -4,22 +4,27 @@ export interface GroundedClaim {
   text: string;
   observationIds: string[];
   isSupported: boolean;
+  isContradicted: boolean;
+  supportStatus: 'supported' | 'unsupported' | 'contradicted';
   reason?: string;
 }
 
 export interface GroundedSynthesisResult {
   claims: GroundedClaim[];
   answer: string;
-  status: 'grounded' | 'unsupported' | 'partially_grounded';
+  status: 'grounded' | 'unsupported' | 'partially_grounded' | 'contradicted';
   supportedClaimCount: number;
+  unsupportedClaimsCount: number;
+  contradictedClaimCount: number;
   totalClaimCount: number;
   groundednessPct: number;
+  passed: boolean;
 }
 
 export class ClaimGroundingValidator {
   /**
-   * Verifies each claim against observation ledger items (Gate 5).
-   * Ensures observation IDs exist in run, belong to current run, and contain supporting evidence.
+   * Performs semantic claim-level grounding validation against the observation ledger (Issue 7).
+   * Extracts claims from final answer, maps to evidence, detects contradictions, and calculates groundedness.
    */
   public validateSynthesisGrounding(
     rawAnswer: string,
@@ -34,81 +39,108 @@ export class ClaimGroundingValidator {
     for (const claimText of claimTexts) {
       const citedObsIds = this.extractCitedObsIds(claimText);
 
-      if (citedObsIds.length === 0) {
+      // If no citation, try matching against all observations in ledger
+      const obsToUse = citedObsIds.length > 0
+        ? citedObsIds.map((id) => validObsMap.get(id)).filter(Boolean) as ObservationItem[]
+        : observations.filter((o) => !o.isError);
+
+      if (obsToUse.length === 0) {
         claims.push({
           text: claimText,
           observationIds: [],
           isSupported: false,
-          reason: 'No observation citation provided for claim.',
+          isContradicted: false,
+          supportStatus: 'unsupported',
+          reason: 'No valid observation evidence available for claim.',
         });
         continue;
       }
 
-      const validCitedIds: string[] = [];
+      let foundContradiction = false;
+      let contradictionReason = '';
       let hasSupportingEvidence = false;
+      const validCitedIds: string[] = [];
 
-      for (const obsId of citedObsIds) {
-        const obs = validObsMap.get(obsId);
-        if (!obs) {
-          continue;
+      for (const obs of obsToUse) {
+        if (obs.isError) continue;
+        validCitedIds.push(obs.id);
+
+        const checkResult = this.evaluateClaimAgainstObservation(claimText, obs);
+        if (checkResult.isContradicted) {
+          foundContradiction = true;
+          contradictionReason = checkResult.reason || 'Claim contradicts observation data.';
+          break;
         }
-
-        if (obs.isError) {
-          continue;
-        }
-
-        validCitedIds.push(obsId);
-
-        if (this.doesObservationSupportClaim(claimText, obs)) {
+        if (checkResult.isSupported) {
           hasSupportingEvidence = true;
         }
       }
 
-      if (validCitedIds.length > 0 && hasSupportingEvidence) {
+      if (foundContradiction) {
+        claims.push({
+          text: claimText,
+          observationIds: validCitedIds,
+          isSupported: false,
+          isContradicted: true,
+          supportStatus: 'contradicted',
+          reason: contradictionReason,
+        });
+      } else if (hasSupportingEvidence) {
         claims.push({
           text: claimText,
           observationIds: validCitedIds,
           isSupported: true,
+          isContradicted: false,
+          supportStatus: 'supported',
         });
       } else {
         claims.push({
           text: claimText,
           observationIds: validCitedIds,
           isSupported: false,
-          reason: validCitedIds.length === 0
-            ? 'Cited observation ID does not exist in current execution ledger.'
-            : 'Cited observation content does not contain evidence supporting claim.',
+          isContradicted: false,
+          supportStatus: 'unsupported',
+          reason: 'Cited observation does not contain factual evidence supporting claim.',
         });
       }
     }
 
     const totalClaimCount = claims.length;
     const supportedClaimCount = claims.filter((c) => c.isSupported).length;
+    const unsupportedClaimsCount = claims.filter((c) => c.supportStatus === 'unsupported').length;
+    const contradictedClaimCount = claims.filter((c) => c.isContradicted).length;
+
     const groundednessPct = totalClaimCount > 0
       ? parseFloat(((supportedClaimCount / totalClaimCount) * 100).toFixed(1))
       : 0;
 
-    let status: 'grounded' | 'unsupported' | 'partially_grounded' = 'grounded';
-    if (supportedClaimCount === 0 && totalClaimCount > 0) {
+    let status: 'grounded' | 'unsupported' | 'partially_grounded' | 'contradicted' = 'grounded';
+    if (contradictedClaimCount > 0) {
+      status = 'contradicted';
+    } else if (supportedClaimCount === 0 && totalClaimCount > 0) {
       status = 'unsupported';
     } else if (supportedClaimCount < totalClaimCount) {
       status = 'partially_grounded';
     }
+
+    const passed = status === 'grounded' && contradictedClaimCount === 0;
 
     return {
       claims,
       answer: rawAnswer,
       status,
       supportedClaimCount,
+      unsupportedClaimsCount,
+      contradictedClaimCount,
       totalClaimCount,
       groundednessPct,
+      passed,
     };
   }
 
   private extractFactualClaims(answerText: string): string[] {
     const cleanText = answerText.replace(/Supporting Evidence Citations:[\s\S]*/, '').trim();
     
-    // Split on lines or paragraphs to keep citations grouped with claim text
     const parts = cleanText
       .split(/\n+|\s{2,}/)
       .map((s) => s.trim())
@@ -129,36 +161,55 @@ export class ClaimGroundingValidator {
     return Array.from(ids);
   }
 
-  private doesObservationSupportClaim(claim: string, obs: ObservationItem): boolean {
+  private evaluateClaimAgainstObservation(claim: string, obs: ObservationItem): { isSupported: boolean; isContradicted: boolean; reason?: string } {
     const lowerClaim = claim.toLowerCase();
     const lowerContent = obs.resultContent.toLowerCase();
-    const lowerTool = obs.toolName.toLowerCase();
 
-    if (lowerTool === 'vector_search' && (lowerClaim.includes('vector') || lowerClaim.includes('search') || lowerClaim.includes('memory') || lowerClaim.includes('retrieved') || lowerClaim.includes('found'))) {
-      return true;
+    // 1. Semantic Contradiction Check
+    const claimClaimsNoVulns = lowerClaim.includes('no vulnerabilities') || lowerClaim.includes('zero vulnerabilities') || lowerClaim.includes('no security flaws') || lowerClaim.includes('100% secure') || lowerClaim.includes('no issues found');
+    const obsHasVulns = lowerContent.includes('critical vulnerabilities') || lowerContent.includes('vulnerability') || lowerContent.includes('sql injection') || lowerContent.includes('xss') || lowerContent.includes('insecure');
+
+    if (claimClaimsNoVulns && obsHasVulns) {
+      return {
+        isSupported: false,
+        isContradicted: true,
+        reason: `Claim asserts "${claim}" but observation ${obs.id} reports vulnerabilities in payload: "${obs.resultContent.substring(0, 100)}..."`,
+      };
     }
 
-    if (lowerTool === 'zero_trust_audit' && (lowerClaim.includes('audit') || lowerClaim.includes('security') || lowerClaim.includes('vulnerability') || lowerClaim.includes('compliant') || lowerClaim.includes('passed'))) {
-      return true;
+    const claimClaimsSuccess = lowerClaim.includes('completed successfully') || lowerClaim.includes('passed') || lowerClaim.includes('verified');
+    const obsHasFailure = obs.isError || lowerContent.includes('[error]') || lowerContent.includes('failed') || lowerContent.includes('unsupported');
+
+    if (claimClaimsSuccess && obsHasFailure) {
+      return {
+        isSupported: false,
+        isContradicted: true,
+        reason: `Claim asserts success but observation ${obs.id} contains failure/error payload.`,
+      };
     }
 
-    if (lowerTool === 'refactor_code' && (lowerClaim.includes('code') || lowerClaim.includes('refactor') || lowerClaim.includes('typescript') || lowerClaim.includes('python') || lowerClaim.includes('syntax'))) {
-      return true;
-    }
+    // 2. Keyword-Based Support Check (M3: Honest method — requires meaningful overlap, not single-word)
+    // NOTE: This is keyword intersection, not semantic NLI. Documented as such.
+    const stopWords = new Set(['with', 'from', 'that', 'this', 'have', 'were', 'been', 'also', 'more', 'than',
+      'into', 'some', 'each', 'when', 'does', 'will', 'just', 'only', 'very', 'should', 'would', 'could',
+      'about', 'after', 'before', 'their', 'there', 'which', 'these', 'those', 'other']);
+    const claimKeywords = lowerClaim.split(/\W+/).filter((w) => w.length > 3 && !stopWords.has(w));
+    const contentWords = new Set(lowerContent.split(/\W+/).filter((w) => w.length > 3));
 
-    if (lowerTool === 'parse_vision_tags' && (lowerClaim.includes('vision') || lowerClaim.includes('diagram') || lowerClaim.includes('image') || lowerClaim.includes('tag') || lowerClaim.includes('scene'))) {
-      return true;
-    }
+    const matchedWords = claimKeywords.filter((w) => contentWords.has(w));
 
-    if (lowerTool === 'store_memory' && (lowerClaim.includes('store') || lowerClaim.includes('index') || lowerClaim.includes('memory'))) {
-      return true;
-    }
+    // Require at least 2 matched keywords AND 30% overlap ratio for support
+    const overlapRatio = claimKeywords.length > 0 ? matchedWords.length / claimKeywords.length : 0;
+    const substringMatch = lowerClaim.length >= 30 && lowerContent.includes(lowerClaim.substring(0, 30));
+    const isSupported = (matchedWords.length >= 2 && overlapRatio >= 0.3) || substringMatch;
 
-    const claimWords = lowerClaim.split(/\W+/).filter((w) => w.length > 3);
-    const contentWords = new Set(lowerContent.split(/\W+/));
-    const overlap = claimWords.filter((w) => contentWords.has(w));
-
-    return overlap.length >= 1;
+    return {
+      isSupported,
+      isContradicted: false,
+      reason: isSupported
+        ? undefined
+        : `Keyword overlap insufficient: ${matchedWords.length}/${claimKeywords.length} keywords matched (${(overlapRatio * 100).toFixed(0)}% < 30% threshold). Method: keyword intersection, not semantic NLI.`,
+    };
   }
 }
 

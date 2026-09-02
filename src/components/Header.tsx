@@ -10,17 +10,25 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemetryCount }) => {
   const [stats, setStats] = useState({
-    vectorCount: 12,
-    cacheHitRatio: 88.5,
+    status: 'offline',
+    vectorCount: 0,
+    cacheHitRatio: 0,
+    persistenceMode: 'local',
   });
 
   useEffect(() => {
     const fetchHealth = async () => {
-      const data = await apiClient.getHealthStats();
-      setStats({
-        vectorCount: data.vectorCount,
-        cacheHitRatio: data.cacheHitRatioPct,
-      });
+      try {
+        const data = await apiClient.getHealthStats();
+        setStats({
+          status: data.status,
+          vectorCount: data.vectorCount,
+          cacheHitRatio: data.cacheHitRatioPct,
+          persistenceMode: (data as any).persistenceMode || 'local',
+        });
+      } catch {
+        setStats((prev) => ({ ...prev, status: 'offline' }));
+      }
     };
 
     fetchHealth();
@@ -76,11 +84,17 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab, telemet
           </div>
         </div>
 
-        {/* Secure Server API Key Management Status (Gate 11) */}
+        {/* Secure Server API Key Management Status (Gate 11 & Issue 11) */}
         <div className="flex items-center space-x-3 font-mono text-xs">
-          <div className="flex items-center space-x-1.5 rounded-lg bg-emerald-950/60 text-emerald-300 border border-emerald-500/40 px-3 py-1.5">
-            <ShieldCheck className="h-4 w-4 text-emerald-400" />
-            <span>Server REST API Active</span>
+          <div className={`flex items-center space-x-1.5 rounded-lg px-3 py-1.5 border ${
+            stats.status === 'online'
+              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+              : 'bg-rose-950/60 text-rose-300 border-rose-500/40'
+          }`}>
+            <ShieldCheck className={`h-4 w-4 ${stats.status === 'online' ? 'text-emerald-400' : 'text-rose-400'}`} />
+            <span>Server: {stats.status === 'online' ? 'Connected' : 'Disconnected'}</span>
+            <span className="text-slate-500">|</span>
+            <span>DB: {stats.persistenceMode.toUpperCase()}</span>
           </div>
         </div>
       </div>

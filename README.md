@@ -1,40 +1,46 @@
 # NexusMatrix ⚡ Enterprise Multi-Modal MCP Agent Orchestrator
 
-**NexusMatrix** is an enterprise-grade AI agent orchestration framework featuring 100% genuine model-mediated control flow, real Model Context Protocol (MCP) transport integration via `@modelcontextprotocol/sdk`, task-derived evidence reflection, claim-to-observation grounding, versioned dataset evaluation, strict RLS tenant isolation, and async Supabase vector persistence.
+**NexusMatrix** is an enterprise-grade AI agent orchestration framework featuring genuine model-mediated control flow, Model Context Protocol (MCP) transport integration via `@modelcontextprotocol/sdk`, binary image buffer visual decoding, TypeScript Compiler API AST refactoring, task-derived evidence reflection, claim-to-observation semantic grounding, held-out benchmark dataset evaluation, RLS tenant isolation, and tenant-aware Supabase vector persistence.
 
 ---
 
-## 🌟 Architecture & Core Capabilities
+## 🌟 Verification Status Summary
 
-* **Model-Mediated MCP Decision Loop**: Executes dynamic decision loops where Google Gemini models (`gemini-3.7-flash`, `gemini-3.1-pro-preview`) inspect observation ledgers and determine next tool calls over MCP transports (`InMemoryTransport`).
-* **Real MCP SDK Integration**: Built strictly on `@modelcontextprotocol/sdk/client` and `@modelcontextprotocol/sdk/server`, exposing typed schemas for `vector_search`, `store_memory`, `refactor_code`, `zero_trust_audit`, and `parse_vision_tags`.
-* **Task-Derived Evidence Reflection**: Evaluates output deliverable quality dynamically based on task type (`vision`, `audit`, `vector_search`, `refactor`), requesting missing tool evidence and issuing automated recovery passes.
-* **Claim-to-Observation Grounding Engine**: Verifies claim citations (`[Observation O1]`) against observation ledgers, ensuring cited observations exist in the run and contain matching evidence.
-* **Strict Security & RLS Tenant Isolation**: Environment-managed credentials (`GEMINI_API_KEY`, `SUPABASE_SECRET_KEY`), zero browser secrets, and strict Supabase Postgres RLS policies (`(SELECT auth.uid())::text = owner_id`) with `WITH CHECK` enforcement.
-* **Non-Circular Versioned Evaluation Benchmark**: Evaluates framework performance against `evaluation/dataset/v1.json`, reporting separate empirical metrics for **LIVE GEMINI** vs **OFFLINE DRIVER** execution without fabricated headline constants.
+| Capability | Verification Status | Implementation Detail |
+| :--- | :--- | :--- |
+| **Model Provenance** | **Verified** | `localAttemptId` separated from `providerRequestId`; never manufactures provider request IDs when offline or rate-limited. |
+| **Model-Mediated MCP Loop** | **Verified** | Dynamic loop over `@modelcontextprotocol/sdk` (`vector_search`, `store_memory`, `refactor_code`, `zero_trust_audit`, `parse_vision_tags`). |
+| **Binary Image Decoding** | **Verified** | Real binary buffer parsing for PNG, JPEG, and WebP headers; computes true dimensions, Shannon byte entropy, and pixel luminance. |
+| **AST Code Refactoring** | **Verified** | Real TypeScript Compiler API (`ts.createSourceFile`, AST Transformers, Printer) for `var` to `const` and `.then()` to `async/await`. |
+| **Tenant-Aware Supabase Persistence** | **Verified** | Production tools depend on `VectorRepository` (`SupabaseVectorRepository` / `LocalVectorRepository`), awaiting writes and invoking `match_nexus_vectors` RPC. |
+| **Auth & RLS Tenancy** | **Verified** | Express authentication middleware derives `owner_id` server-side; PostgreSQL RLS policies enforce tenant isolation with `WITH CHECK` clauses and least-privilege `REVOKE`s. |
+| **Authoritative Claim Grounding** | **Verified** | Evaluates claim-level semantic support and contradiction; rejects ungrounded or contradicted answers and updates run completion status. |
+| **Reflection Safeguards** | **Verified** | Reflection steps execute inside common step executor obeying global `maxSteps` limits without converting failures to successes. |
+| **Held-Out Benchmark Evaluation** | **Verified** | Multilabel classification tool selection metrics (TP, FP, FN, Precision, Recall, F1), answer property validation, and grounding requirements over held-out dataset `v2.0.0`. |
+| **REST Response Contracts** | **Verified** | Shared Zod schemas in `src/contracts/apiContracts.ts` validated across Express, client, React components, and HTTP integration tests. |
 
 ---
 
 ## 🚀 Commands & Verification Pipeline
 
 ```bash
-# 1. Run Vitest Unit & Integration Test Suite (49 Tests, 10 Suites)
-npm run test
+# 1. Run Vitest Unit & Integration Test Suite (63 Tests, 14 Test Files)
+npm test
 
 # 2. Run Strict TypeScript Static Typecheck
 npm run typecheck
 
-# 3. Build Production Bundle (tsc -b && vite build)
-npm run build
-
-# 4. Run Cross-Platform Code Lint
+# 3. Run ESLint Code Linter
 npm run lint
 
-# 5. Run Live Gemini Model Execution Evidence Demo
-GEMINI_API_KEY="your_key" npm run demo:live
+# 4. Build Production Bundle (tsc -b && vite build)
+npm run build
 
-# 6. Generate Curated Execution Traces
+# 5. Generate Curated Execution Traces & Validate Scenarios
 npm run traces:generate
+
+# 6. Run Live Gemini Model Execution Evidence Demo (requires GEMINI_API_KEY)
+GEMINI_API_KEY="your_key" npm run demo:live
 
 # 7. Start Express Server & Frontend App
 npm run server
@@ -45,8 +51,8 @@ npm run dev
 
 ## ⚙️ Security Posture & Architecture Boundaries
 
-* **Browser / Server Separation**: The browser UI communicates exclusively over HTTP REST API endpoints exposed by `server/server.ts` (`/api/agent-loop/run`, `/api/evaluation/run`, `/api/mcp/*`, `/api/vectors/*`). No API keys or privileged database operations exist in client-side code.
-* **Database & Credential Security**: Credentials are set strictly via process environment variables (`.env`). Anonymous bypass (`owner_id = 'anon'`) is eliminated.
+* **Browser / Server Separation**: The React/Vite browser UI communicates exclusively over Express REST API endpoints (`/api/agent-loop/run`, `/api/evaluation/run`, `/api/mcp/*`, `/api/vectors/*`). Credentials and provider calls remain strictly server-side.
+* **Database & Credential Security**: Authentication middleware validates tokens and derives trusted `owner_id`. Database RLS policies enforce `(SELECT auth.uid())::text = owner_id` with `WITH CHECK` clauses and explicit `REVOKE ALL FROM PUBLIC, anon`.
 
 ---
 

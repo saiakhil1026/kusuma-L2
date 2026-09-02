@@ -145,7 +145,7 @@ export class ReflectionEngine {
     }
     confidence = Math.max(0.1, Math.min(1.0, parseFloat(confidence.toFixed(2))));
 
-    // Construct revised output if needed
+    // Construct revised output if needed (Min4: Preserve original draft text)
     let revisedOutput: string | undefined = undefined;
     if (!passed) {
       const groundedSummary = observations
@@ -153,9 +153,13 @@ export class ReflectionEngine {
         .map((o) => `- [Observation ${o.id}] (${o.toolName}): Verified`)
         .join('\n');
 
-      revisedOutput = `[Grounded Revision Pass]:\nObjective: "${objective}"\n\nVerified Observations:\n${
-        groundedSummary || 'No successful tool observations.'
-      }\n\n[Correction Notes]: Addressed missing requirements (${missingRequirements.join('; ')}) and ungrounded claims (${unsupportedClaims.join('; ')}).`;
+      const correctionHeader = `[Grounded Revision Pass]: Grounding adjustments applied for objective "${objective}".`;
+      const notes = [
+        missingRequirements.length > 0 ? `Missing requirements: ${missingRequirements.join('; ')}` : '',
+        unsupportedClaims.length > 0 ? `Ungrounded claims adjusted: ${unsupportedClaims.join('; ')}` : '',
+      ].filter(Boolean).join('\n');
+
+      revisedOutput = `${draftOutput}\n\n${correctionHeader}\n${notes}\n\nVerified Observations:\n${groundedSummary || 'No successful tool observations.'}`;
     }
 
     return {

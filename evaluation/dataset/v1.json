@@ -1,56 +1,102 @@
 {
-  "version": "v1.0.0",
-  "datasetName": "NexusMatrix L2 Agent Benchmark Suite",
+  "version": "v2.0.0",
+  "datasetName": "NexusMatrix Held-Out Multilabel Agent Benchmark Dataset",
   "testCases": [
     {
       "id": "case_vec_01",
-      "objective": "Retrieve 768D vector similarity context memory for authentication tokens.",
-      "category": "vector_search",
+      "objective": "Fetch relevant background documentation and stored specs regarding user authentication tokens.",
+      "category": "memory_retrieval",
       "difficulty": "standard",
       "requiredEvidence": ["vector_search"],
       "allowedTools": ["vector_search", "store_memory"],
       "forbiddenTools": ["parse_vision_tags"],
-      "expectedAnswerProperties": ["vector", "memory", "similarity"]
+      "expectedAnswerProperties": ["authentication", "memory"],
+      "groundingRequired": true,
+      "expectedOutcome": "completed"
     },
     {
       "id": "case_audit_01",
-      "objective": "Perform zero_trust_audit on SQL query: SELECT * FROM users WHERE id = ' + req.query.id + '.",
-      "category": "audit",
+      "objective": "Check if this database query string is safe to execute: SELECT * FROM users WHERE id = ' + req.query.id + ';",
+      "category": "security_check",
       "difficulty": "standard",
       "requiredEvidence": ["zero_trust_audit"],
       "allowedTools": ["zero_trust_audit", "vector_search"],
       "forbiddenTools": ["parse_vision_tags"],
-      "expectedAnswerProperties": ["audit", "security", "vulnerability"]
+      "expectedAnswerProperties": ["security", "vulnerability"],
+      "groundingRequired": true,
+      "expectedOutcome": "completed"
     },
     {
       "id": "case_vision_01",
-      "objective": "Parse vision spatial diagram and extract UI architecture element tags.",
-      "category": "vision",
+      "objective": "Extract visual component layout tags and spatial boundaries from this system wireframe diagram.",
+      "category": "spatial_analysis",
       "difficulty": "standard",
       "requiredEvidence": ["parse_vision_tags"],
       "allowedTools": ["parse_vision_tags", "store_memory"],
       "forbiddenTools": ["zero_trust_audit"],
-      "expectedAnswerProperties": ["vision", "diagram", "tag"]
+      "expectedAnswerProperties": ["diagram", "spatial"],
+      "groundingRequired": true,
+      "expectedOutcome": "completed"
     },
     {
       "id": "case_refactor_01",
-      "objective": "Refactor code: fetch('/api/data').then(res => res.json()).then(data => console.log(data)).",
-      "category": "refactor",
+      "objective": "Modernize this asynchronous HTTP request function from legacy callback style: fetch('/api/data').then(res => res.json()).then(data => console.log(data));",
+      "category": "code_modernization",
       "difficulty": "standard",
       "requiredEvidence": ["refactor_code"],
       "allowedTools": ["refactor_code", "zero_trust_audit"],
       "forbiddenTools": ["parse_vision_tags"],
-      "expectedAnswerProperties": ["async", "await", "refactor"]
+      "expectedAnswerProperties": ["async", "await"],
+      "groundingRequired": true,
+      "expectedOutcome": "completed"
     },
     {
       "id": "case_multi_01",
-      "objective": "Perform zero_trust_audit on security component and search vector memory for past audits.",
-      "category": "multi_tool",
+      "objective": "Verify whether this authentication handler has security flaws and look up prior compliance records.",
+      "category": "multi_tool_workflow",
       "difficulty": "complex",
       "requiredEvidence": ["zero_trust_audit", "vector_search"],
       "allowedTools": ["zero_trust_audit", "vector_search", "refactor_code"],
-      "forbiddenTools": [],
-      "expectedAnswerProperties": ["audit", "vector", "security"]
+      "forbiddenTools": ["parse_vision_tags"],
+      "expectedAnswerProperties": ["security", "compliance"],
+      "groundingRequired": true,
+      "expectedOutcome": "completed"
+    },
+    {
+      "id": "case_error_01",
+      "objective": "Simulate a tool-error-recovery scenario where an unhandled tool exception occurs and requires fallback auditing.",
+      "category": "error_recovery",
+      "difficulty": "complex",
+      "requiredEvidence": ["zero_trust_audit"],
+      "allowedTools": ["zero_trust_audit", "vector_search"],
+      "forbiddenTools": ["parse_vision_tags"],
+      "expectedAnswerProperties": ["security", "audit"],
+      "groundingRequired": true,
+      "expectedOutcome": "completed"
+    },
+    {
+      "id": "case_memory_store_01",
+      "objective": "Store and index this architecture decision record in vector memory context: ADR-004 Use Supabase RLS policies for tenant data isolation.",
+      "category": "memory_indexing",
+      "difficulty": "standard",
+      "requiredEvidence": ["vector_search"],
+      "allowedTools": ["vector_search", "store_memory"],
+      "forbiddenTools": ["parse_vision_tags"],
+      "expectedAnswerProperties": ["memory", "vector"],
+      "groundingRequired": true,
+      "expectedOutcome": "completed"
+    },
+    {
+      "id": "case_python_ast_01",
+      "objective": "Refactor python function to type-annotated type-safe code implementation.",
+      "category": "code_modernization",
+      "difficulty": "standard",
+      "requiredEvidence": ["refactor_code"],
+      "allowedTools": ["refactor_code", "zero_trust_audit"],
+      "forbiddenTools": ["parse_vision_tags"],
+      "expectedAnswerProperties": ["code", "implementation"],
+      "groundingRequired": true,
+      "expectedOutcome": "completed"
     }
   ]
 }

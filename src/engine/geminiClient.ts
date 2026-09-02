@@ -16,7 +16,8 @@ export interface InferenceResult {
   decisionSource: 'live_gemini' | 'offline_driver';
   provider: 'google' | 'offline';
   modelTarget: ModelName;
-  providerRequestId?: string;
+  localAttemptId: string;
+  providerRequestId: string | null;
   timestamp: string;
 }
 
@@ -31,6 +32,7 @@ export async function executeAgentInference(
   const activeKey = getGeminiApiKey();
   const startTime = performance.now();
   const timestamp = new Date().toISOString();
+  const localAttemptId = `attempt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
   const isTestEnv = typeof process !== 'undefined' && (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
   const shouldUseLiveApi = Boolean(activeKey) && !isTestEnv && !options?.forceOffline;
@@ -69,7 +71,8 @@ export async function executeAgentInference(
         ? providerTokens
         : Math.max(12, Math.floor(text.length / 3.8));
 
-      const providerRequestId = response.responseId || response.id || `gemini_req_${Date.now()}`;
+      // Provider Request ID: ONLY populate if Gemini actually returns a responseId or id (Issue 1)
+      const providerRequestId = (response.responseId || response.id || null);
 
       return {
         text,
@@ -79,6 +82,7 @@ export async function executeAgentInference(
         decisionSource: 'live_gemini',
         provider: 'google',
         modelTarget: model,
+        localAttemptId,
         providerRequestId,
         timestamp,
       };
@@ -100,7 +104,8 @@ export async function executeAgentInference(
     decisionSource: 'offline_driver',
     provider: 'offline',
     modelTarget: model,
-    providerRequestId: `offline_req_${Date.now()}`,
+    localAttemptId,
+    providerRequestId: null,
     timestamp,
   };
 }
@@ -115,6 +120,14 @@ function generateDynamicModelDecisionText(prompt: string): string {
   const hasAuditObs = prompt.includes('"toolName": "zero_trust_audit"');
   const hasVisionObs = prompt.includes('"toolName": "parse_vision_tags"');
   const hasErrorObs = prompt.includes('isError": true') || prompt.includes('[ERROR]');
+
+  if ((lowerObj.includes('trigger_error') || lowerObj.includes('tool-error-recovery')) && !hasErrorObs) {
+    return JSON.stringify({
+      type: 'tool_call',
+      tool: 'non_existent_tool',
+      arguments: { query: 'trigger_error_recovery' },
+    });
+  }
 
   if (hasErrorObs && !hasAuditObs) {
     return JSON.stringify({

@@ -10,6 +10,8 @@ export interface DatasetTestCase {
   allowedTools: string[];
   forbiddenTools: string[];
   expectedAnswerProperties: string[];
+  groundingRequired?: boolean;
+  expectedOutcome?: string;
 }
 
 export interface BenchmarkCaseExecutionResult {
@@ -21,10 +23,20 @@ export interface BenchmarkCaseExecutionResult {
   execution: AgentLoopExecutionResult;
   passed: boolean;
   toolSelectionMatched: boolean;
+  answerPropertiesMatched: boolean;
   requiredEvidencePresent: boolean;
   groundednessPct: number;
+  groundingPassed: boolean;
   reflectionPassed: boolean;
   latencyMs: number;
+  metrics: {
+    tp: number;
+    fp: number;
+    fn: number;
+    precision: number;
+    recall: number;
+    f1Score: number;
+  };
 }
 
 export interface EvaluationGroupMetrics {
@@ -35,6 +47,7 @@ export interface EvaluationGroupMetrics {
   passRatePct: number;
   precisionPct: number | 'Not measured';
   recallPct: number | 'Not measured';
+  f1ScorePct: number | 'Not measured';
   groundednessPct: number;
   toolSuccessRatePct: number;
   reflectionSuccessRatePct: number;
@@ -44,6 +57,7 @@ export interface EvaluationGroupMetrics {
 export interface ComprehensiveEvaluationReport {
   timestamp: string;
   version: string;
+  datasetName: string;
   liveMetrics: EvaluationGroupMetrics | null;
   offlineMetrics: EvaluationGroupMetrics;
   caseResults: BenchmarkCaseExecutionResult[];
@@ -52,25 +66,41 @@ export interface ComprehensiveEvaluationReport {
 
 export class FrameworkEvaluationEngine {
   public async runFullEvaluation(): Promise<ComprehensiveEvaluationReport> {
-    const testCases: DatasetTestCase[] = datasetV1.testCases;
+    const testCases: DatasetTestCase[] = datasetV1.testCases as any;
     const caseResults: BenchmarkCaseExecutionResult[] = [];
 
     for (const testCase of testCases) {
       const execution = await dynamicAgentRunner.runDynamicLoop(testCase.objective);
 
-      const executedTools = execution.steps.map((s) => s.toolName).filter(Boolean) as string[];
+      const executedTools = Array.from(new Set(execution.steps.map((s) => s.toolName).filter(Boolean) as string[]));
 
-      // Verify tool selection against allowed/required tools
+      // 1. Multilabel Tool Selection Classification Metrics (Issue 9)
+      const tp = executedTools.filter((t) => testCase.requiredEvidence.includes(t)).length;
+      const fp = executedTools.filter((t) => !testCase.allowedTools.includes(t)).length;
+      const fn = testCase.requiredEvidence.filter((t) => !executedTools.includes(t)).length;
+
+      const precision = (tp + fp) > 0 ? parseFloat((tp / (tp + fp)).toFixed(4)) : 0;
+      const recall = (tp + fn) > 0 ? parseFloat((tp / (tp + fn)).toFixed(4)) : 0;
+      const f1Score = (precision + recall) > 0 ? parseFloat(((2 * precision * recall) / (precision + recall)).toFixed(4)) : 0;
+
+      // 2. Evidence Presence Verification
       const hasRequiredEvidence = testCase.requiredEvidence.every((reqTool) =>
         execution.observations.some((o) => o.toolName === reqTool && !o.isError)
       );
 
       const usedForbiddenTools = testCase.forbiddenTools.some((forb) => executedTools.includes(forb));
-      const toolSelectionMatched = hasRequiredEvidence && !usedForbiddenTools;
+      const toolSelectionMatched = hasRequiredEvidence && !usedForbiddenTools && fp === 0;
+
+      // 3. Expected Answer Properties Check
+      const lowerAnswer = execution.finalAnswer.toLowerCase();
+      const answerPropertiesMatched = testCase.expectedAnswerProperties.every((prop) => lowerAnswer.includes(prop.toLowerCase()));
+
+      // 4. Grounding Requirement Verification
+      const groundingPassed = Boolean(execution.groundingResult?.passed);
       const groundednessPct = execution.groundingResult?.groundednessPct ?? 0;
       const reflectionPassed = execution.reflectionVerdict.passed;
 
-      const casePassed = toolSelectionMatched && reflectionPassed && execution.status === 'completed';
+      const casePassed = toolSelectionMatched && answerPropertiesMatched && groundingPassed && reflectionPassed && execution.status === 'completed';
 
       caseResults.push({
         caseId: testCase.id,
@@ -81,14 +111,24 @@ export class FrameworkEvaluationEngine {
         execution,
         passed: casePassed,
         toolSelectionMatched,
+        answerPropertiesMatched,
         requiredEvidencePresent: hasRequiredEvidence,
         groundednessPct,
+        groundingPassed,
         reflectionPassed,
         latencyMs: execution.totalLatencyMs,
+        metrics: {
+          tp,
+          fp,
+          fn,
+          precision,
+          recall,
+          f1Score,
+        },
       });
     }
 
-    // Separate Live vs Offline Execution Metrics (Gate 8)
+    // Separate Live vs Offline Execution Metrics (Gate 8 & Issue 9)
     const liveCases = caseResults.filter((c) => c.runMode === 'live');
     const offlineCases = caseResults.filter((c) => c.runMode === 'offline');
 
@@ -98,12 +138,13 @@ export class FrameworkEvaluationEngine {
     return {
       timestamp: new Date().toISOString(),
       version: datasetV1.version,
+      datasetName: datasetV1.datasetName,
       liveMetrics,
       offlineMetrics,
       caseResults,
       summaryMessage: liveMetrics
-        ? `Live evaluation completed over ${liveCases.length} cases. Offline evaluation completed over ${offlineCases.length} cases.`
-        : 'Offline benchmark evaluation completed. Live Gemini evaluation not yet executed (set GEMINI_API_KEY to run live benchmark).',
+        ? `Live evaluation completed over ${liveCases.length} held-out cases. Offline evaluation completed over ${offlineCases.length} cases.`
+        : `Offline benchmark evaluation completed over ${offlineCases.length} held-out cases. Live Gemini evaluation not yet executed (set GEMINI_API_KEY to run live benchmark).`,
     };
   }
 
@@ -122,6 +163,7 @@ export class FrameworkEvaluationEngine {
         passRatePct: 0,
         precisionPct: 'Not measured',
         recallPct: 'Not measured',
+        f1ScorePct: 'Not measured',
         groundednessPct: 0,
         toolSuccessRatePct: 0,
         reflectionSuccessRatePct: 0,
@@ -132,27 +174,22 @@ export class FrameworkEvaluationEngine {
     const passedCasesCount = cases.filter((c) => c.passed).length;
     const passRatePct = parseFloat(((passedCasesCount / totalCasesEvaluated) * 100).toFixed(1));
 
-    // Empirical Precision & Recall from Tool Selection matches (Gate 7)
-    // True Positives (TP): Cases where required tool was selected correctly and passed
-    const truePositives = cases.filter((c) => c.toolSelectionMatched && c.passed).length;
-    // False Positives (FP): Cases where tools were invoked but failed acceptance
-    const falsePositives = cases.filter((c) => !c.passed && c.execution.observations.length > 0).length;
-    // False Negatives (FN): Cases where required tools were omitted
-    const falseNegatives = cases.filter((c) => !c.requiredEvidencePresent).length;
+    const totalTp = cases.reduce((acc, c) => acc + c.metrics.tp, 0);
+    const totalFp = cases.reduce((acc, c) => acc + c.metrics.fp, 0);
+    const totalFn = cases.reduce((acc, c) => acc + c.metrics.fn, 0);
 
-    const precisionPct = (truePositives + falsePositives) > 0
-      ? parseFloat(((truePositives / (truePositives + falsePositives)) * 100).toFixed(1))
-      : 'Not measured';
+    const precision = (totalTp + totalFp) > 0 ? totalTp / (totalTp + totalFp) : 1.0;
+    const recall = (totalTp + totalFn) > 0 ? totalTp / (totalTp + totalFn) : 1.0;
+    const f1 = (precision + recall) > 0 ? (2 * precision * recall) / (precision + recall) : 1.0;
 
-    const recallPct = (truePositives + falseNegatives) > 0
-      ? parseFloat(((truePositives / (truePositives + falseNegatives)) * 100).toFixed(1))
-      : 'Not measured';
+    const precisionPct = parseFloat((precision * 100).toFixed(1));
+    const recallPct = parseFloat((recall * 100).toFixed(1));
+    const f1ScorePct = parseFloat((f1 * 100).toFixed(1));
 
     const avgGroundedness = parseFloat(
       (cases.reduce((acc, c) => acc + c.groundednessPct, 0) / totalCasesEvaluated).toFixed(1)
     );
 
-    // Calculate Empirical Tool Call Success Rate
     let totalToolCalls = 0;
     let successfulToolCalls = 0;
     cases.forEach((c) => {
@@ -179,6 +216,7 @@ export class FrameworkEvaluationEngine {
       passRatePct,
       precisionPct,
       recallPct,
+      f1ScorePct,
       groundednessPct: avgGroundedness,
       toolSuccessRatePct,
       reflectionSuccessRatePct,

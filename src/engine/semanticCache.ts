@@ -43,7 +43,7 @@ class SemanticCacheManager {
       similarity: parseFloat(bestSimilarity.toFixed(4)),
       distance,
       cachedVector: isHit ? bestMatchVector : undefined,
-      latencyMs: isHit ? Math.min(0.85, latencyMs) : latencyMs, // Sub-ms guarantee for hit
+      latencyMs, // M1: Report real measured latency, not capped
     };
   }
 

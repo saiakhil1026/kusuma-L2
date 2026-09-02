@@ -5,7 +5,7 @@ describe('Empirical Benchmark Dataset Evaluation Suite (Gates 7 & 8)', () => {
   it('should evaluate versioned benchmark dataset v1.json and return empirical offline metrics', async () => {
     const report = await frameworkEvaluator.runFullEvaluation();
 
-    expect(report.version).toBe('v1.0.0');
+    expect(report.version).toBe('v2.0.0');
     expect(report.caseResults.length).toBeGreaterThan(0);
     expect(report.offlineMetrics).toBeDefined();
 

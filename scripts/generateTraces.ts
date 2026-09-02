@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import { dynamicAgentRunner } from '../src/engine/agentLoop';
+import { validateTraceScenario, validateTraceSchema } from '../src/engine/traceValidator';
 
 dotenv.config();
 
@@ -17,7 +18,7 @@ async function generateCuratedTraces() {
     fs.mkdirSync(curatedDir, { recursive: true });
   }
 
-  // 6 Curated Trace Scenarios demonstrating distinct acceptance-critical behaviors (Issue 2)
+  // 6 Curated Trace Scenarios demonstrating distinct acceptance-critical behaviors (Issue 1 & 12)
   const scenarios = [
     {
       filename: 'offline-success.json',
@@ -28,7 +29,7 @@ async function generateCuratedTraces() {
     },
     {
       filename: 'tool-error-recovery.json',
-      objective: 'Perform zero_trust_audit on unsafe payload: const q = "SELECT * FROM users WHERE id = " + req.query.id;',
+      objective: 'Perform zero_trust_audit on unsafe payload (trigger_error_recovery): const q = "SELECT * FROM users WHERE id = " + req.query.id;',
       model: 'gemini-3.7-flash',
       forceOffline: true,
       maxSteps: 6,
@@ -73,12 +74,13 @@ async function generateCuratedTraces() {
 
     const curatedRecord = {
       executionId: res.id,
+      localAttemptId: res.localAttemptId,
       timestamp: res.timestamp,
       executionMode: res.isLive ? 'model_mediated_mcp' : 'test',
       decisionSource: res.decisionSource,
       provider: res.provider,
       modelTarget: res.modelTarget,
-      providerRequestId: res.providerRequestId || (res.isLive ? `gemini_req_${Date.now()}` : `offline_req_${Date.now()}`),
+      providerRequestId: res.providerRequestId || null, // NEVER manufacture provider request IDs (Issue 1)
       isLive: res.isLive,
       userObjective: res.objective,
       status: res.status,
@@ -95,6 +97,17 @@ async function generateCuratedTraces() {
         errorCount: res.observations.filter((o) => o.isError).length,
       },
     };
+
+    // Validate Trace Schema & Scenario Event Criteria (Issue 12 & 13)
+    try {
+      validateTraceSchema(curatedRecord);
+      const validation = validateTraceScenario(curatedRecord as any, sc.filename);
+      if (!validation.valid) {
+        console.warn(`  ⚠️ Warning: Trace [${sc.filename}] scenario validation note: ${validation.reason}`);
+      }
+    } catch (err: any) {
+      console.error(`  ❌ Schema validation failed for ${sc.filename}: ${err.message}`);
+    }
 
     const targetPath = path.join(curatedDir, sc.filename);
     fs.writeFileSync(targetPath, JSON.stringify(curatedRecord, null, 2), 'utf-8');

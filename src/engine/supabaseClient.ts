@@ -10,7 +10,7 @@ function getSupabaseUrl(): string {
       return import.meta.env.VITE_SUPABASE_URL;
     }
   } catch {}
-  return 'https://zmgchehdwvycngptkqnd.supabase.co';
+  return '';  // No hardcoded fallback — requires SUPABASE_URL env var
 }
 
 function getSupabaseKey(): string {
