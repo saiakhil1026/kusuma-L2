@@ -1,60 +1,52 @@
-import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
+import { QdrantClient } from '@qdrant/js-client-rest';
 
-function getSupabaseUrl(): string {
+function getQdrantUrl(): string {
   if (typeof process !== 'undefined' && process.env) {
-    if (process.env.SUPABASE_URL) return process.env.SUPABASE_URL;
-    if (process.env.VITE_SUPABASE_URL) return process.env.VITE_SUPABASE_URL;
+    if (process.env.QDRANT_URL) return process.env.QDRANT_URL;
   }
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) {
-      return import.meta.env.VITE_SUPABASE_URL;
-    }
-  } catch {}
-  return '';  // No hardcoded fallback — requires SUPABASE_URL env var
-}
-
-function getSupabaseKey(): string {
-  if (typeof process !== 'undefined' && process.env) {
-    if (process.env.SUPABASE_PUBLISHABLE_KEY) return process.env.SUPABASE_PUBLISHABLE_KEY;
-    if (process.env.SUPABASE_ANON_KEY) return process.env.SUPABASE_ANON_KEY;
-    if (process.env.VITE_SUPABASE_ANON_KEY) return process.env.VITE_SUPABASE_ANON_KEY;
-    if (process.env.VITE_SUPABASE_PUBLISHABLE_KEY) return process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  }
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-    }
-  } catch {}
   return '';
 }
 
-const supabaseUrl = getSupabaseUrl();
-const supabaseKey = getSupabaseKey();
-
-let wsTransport: any = undefined;
-if (typeof window === 'undefined') {
-  try {
-    const wsMod = 'ws';
-    wsTransport = require(wsMod);
-  } catch {}
+function getQdrantApiKey(): string {
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.QDRANT_API_KEY) return process.env.QDRANT_API_KEY;
+  }
+  return '';
 }
 
-export const supabase = supabaseKey
-  ? createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false },
-      ...(wsTransport ? { realtime: { transport: wsTransport } } : {}),
-    })
-  : null;
+const qdrantUrl = getQdrantUrl();
+const qdrantKey = getQdrantApiKey();
 
-export async function checkSupabaseConnection(): Promise<boolean> {
-  if (!supabase) return false;
+let qdrantClient: QdrantClient | null = null;
+const isTestEnv = typeof process !== 'undefined' && (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
+
+if (qdrantUrl && qdrantKey && !isTestEnv) {
   try {
-    const { error } = await supabase.from('nexus_vectors').select('count', { count: 'exact', head: true });
-    return !error;
+    const cleanUrl = qdrantUrl.replace(/:\d+$/, '');
+    const isCloud = cleanUrl.includes('.qdrant.io');
+    qdrantClient = new QdrantClient({
+      url: cleanUrl,
+      port: isCloud ? 443 : 6333,
+      apiKey: qdrantKey,
+      checkCompatibility: false,
+    });
+  } catch (err) {
+    console.warn('[Qdrant] Failed to initialize client:', err);
+  }
+}
+
+export async function checkQdrantConnection(): Promise<boolean> {
+  if (!qdrantClient) return false;
+  try {
+    await qdrantClient.getCollections();
+    return true;
   } catch {
     return false;
   }
 }
+
+export const ACTIVE_QDRANT_COLLECTION = 'nexus_vectors';
 
 // Vector Repository Abstraction (Gate 10)
 export interface VectorRepositoryEntry {
@@ -84,90 +76,127 @@ export interface VectorSearchResult {
 }
 
 export interface VectorRepository {
-  readonly mode: 'local' | 'supabase';
+  readonly mode: 'local' | 'qdrant';
   addVector(entry: VectorRepositoryEntry): Promise<{ success: boolean; error?: string }>;
   searchVectors(queryEmbedding: number[], topK: number, ownerId: string): Promise<VectorSearchResult[]>;
   getVectors(ownerId: string): Promise<VectorRepositoryEntry[]>;
 }
 
-export class SupabaseVectorRepository implements VectorRepository {
-  public readonly mode = 'supabase' as const;
+export class QdrantVectorRepository implements VectorRepository {
+  public readonly mode = 'qdrant' as const;
+  private readonly collectionName: string;
+
+  constructor(collectionName: string = ACTIVE_QDRANT_COLLECTION) {
+    this.collectionName = collectionName;
+  }
+
+  public async initCollection(): Promise<void> {
+    if (!qdrantClient) return;
+    try {
+      const collections = await qdrantClient.getCollections();
+      const exists = collections.collections.some((c) => c.name === this.collectionName);
+      if (!exists) {
+        await qdrantClient.createCollection(this.collectionName, {
+          vectors: {
+            size: 768,
+            distance: 'Cosine',
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('[Qdrant] Collection init failed:', err);
+    }
+  }
 
   public async addVector(entry: VectorRepositoryEntry): Promise<{ success: boolean; error?: string }> {
-    if (!supabase) {
-      return { success: false, error: 'Supabase client not initialized' };
+    if (!qdrantClient) {
+      return { success: false, error: 'Qdrant client not initialized' };
     }
+
     try {
-      const { error } = await supabase.from('nexus_vectors').insert({
-        id: entry.id,
+      await this.initCollection();
+
+      const payload = {
         owner_id: entry.ownerId,
         text: entry.text,
         agent_id: entry.agentId,
         agent_name: entry.agentName,
         modality: entry.modality,
-        node_title: entry.nodeTitle,
+        node_title: entry.nodeTitle || null,
         tokens: entry.tokens,
-        embedding: entry.embedding,
-        projection_2d: entry.projection2D,
+        projection_2d: entry.projection2D || null,
+        created_at: new Date().toISOString(),
+      };
+
+      await qdrantClient.upsert(this.collectionName, {
+        points: [
+          {
+            id: entry.id,
+            vector: entry.embedding,
+            payload,
+          },
+        ],
       });
 
-      if (error) {
-        return { success: false, error: error.message };
-      }
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err.message };
+      return { success: false, error: err.message || String(err) };
     }
   }
 
-  public async searchVectors(queryEmbedding: number[], topK: number = 5, ownerId: string): Promise<VectorSearchResult[]> {
-    if (!supabase) return [];
-    try {
-      const { data, error } = await supabase.rpc('match_nexus_vectors', {
-        query_embedding: queryEmbedding,
-        match_threshold: 0.70,
-        match_count: topK,
-        request_owner_id: ownerId,
-      });
+  public async searchVectors(queryEmbedding: number[], topK: number = 5, _ownerId?: string): Promise<VectorSearchResult[]> {
+    if (!qdrantClient) return [];
 
-      if (error || !data) return [];
-      return data.map((row: any) => ({
-        id: row.id,
-        text: row.text,
-        agentId: row.agent_id,
-        agentName: row.agent_name,
-        modality: row.modality,
-        nodeTitle: row.node_title,
-        similarity: row.similarity,
-        tokens: row.tokens,
-        projection2D: row.projection_2d,
+    try {
+      const response = await (qdrantClient as any).search(this.collectionName, {
+        vector: queryEmbedding,
+        limit: topK,
+        score_threshold: 0.70,
+      });
+      const result: any[] = response.result || [];
+
+      return result.map((point: any) => ({
+        id: String(point.id),
+        text: (point.payload?.text as string) || '',
+        agentId: (point.payload?.agent_id as string) || '',
+        agentName: (point.payload?.agent_name as string) || '',
+        modality: (point.payload?.modality as string) || '',
+        nodeTitle: (point.payload?.node_title as string) || undefined,
+        similarity: parseFloat((point.score || 0).toFixed(4)),
+        tokens: (point.payload?.tokens as number) || 0,
+        projection2D: point.payload?.projection_2d
+          ? { x: (point.payload.projection_2d as any).x, y: (point.payload.projection_2d as any).y }
+          : undefined,
       }));
     } catch {
       return [];
     }
   }
 
-  public async getVectors(ownerId: string): Promise<VectorRepositoryEntry[]> {
-    if (!supabase) return [];
-    try {
-      const { data, error } = await supabase
-        .from('nexus_vectors')
-        .select('*')
-        .eq('owner_id', ownerId);
+  public async getVectors(_ownerId?: string): Promise<VectorRepositoryEntry[]> {
+    if (!qdrantClient) return [];
 
-      if (error || !data) return [];
-      return data.map((row: any) => ({
-        id: row.id,
-        ownerId: row.owner_id,
-        text: row.text,
-        agentId: row.agent_id,
-        agentName: row.agent_name,
-        modality: row.modality,
-        nodeTitle: row.node_title,
-        tokens: row.tokens,
-        embedding: row.embedding,
-        projection2D: row.projection_2d,
-        createdAt: row.created_at,
+    try {
+      const response = await (qdrantClient as any).search(this.collectionName, {
+        vector: new Array(768).fill(0.001),
+        limit: 100,
+      });
+      const result: any[] = response.result || [];
+
+      return result.map((point: any) => ({
+        id: String(point.id),
+        ownerId: (point.payload?.owner_id as string) || '',
+        text: (point.payload?.text as string) || '',
+        agentId: (point.payload?.agent_id as string) || '',
+        agentName: (point.payload?.agent_name as string) || '',
+        modality: (point.payload?.modality as string) || '',
+        nodeTitle: (point.payload?.node_title as string) || undefined,
+        tokens: (point.payload?.tokens as number) || 0,
+        embedding: (point.vector as number[]) || new Array(768).fill(0),
+        projection2D: point.payload?.projection_2d
+          ? { x: (point.payload.projection_2d as any).x, y: (point.payload.projection_2d as any).y }
+          : undefined,
+        createdAt: (point.payload?.created_at as string) || undefined,
       }));
     } catch {
       return [];
@@ -184,9 +213,10 @@ export class LocalVectorRepository implements VectorRepository {
     return { success: true };
   }
 
-  public async searchVectors(queryEmbedding: number[], topK: number = 5, ownerId: string): Promise<VectorSearchResult[]> {
-    const userEntries = Array.from(this.entries.values()).filter((e) => e.ownerId === ownerId);
-    
+  public async searchVectors(queryEmbedding: number[], topK: number = 5, ownerId?: string): Promise<VectorSearchResult[]> {
+    const allEntries = Array.from(this.entries.values());
+    const userEntries = ownerId ? allEntries.filter((e) => e.ownerId === ownerId) : allEntries;
+
     const results: VectorSearchResult[] = userEntries.map((e) => {
       const sim = this.cosineSimilarity(queryEmbedding, e.embedding);
       return {
@@ -208,8 +238,9 @@ export class LocalVectorRepository implements VectorRepository {
       .slice(0, topK);
   }
 
-  public async getVectors(ownerId: string): Promise<VectorRepositoryEntry[]> {
-    return Array.from(this.entries.values()).filter((e) => e.ownerId === ownerId);
+  public async getVectors(ownerId?: string): Promise<VectorRepositoryEntry[]> {
+    const allEntries = Array.from(this.entries.values());
+    return ownerId ? allEntries.filter((e) => e.ownerId === ownerId) : allEntries;
   }
 
   private cosineSimilarity(a: number[], b: number[]): number {
@@ -227,6 +258,6 @@ export class LocalVectorRepository implements VectorRepository {
   }
 }
 
-export const activeVectorRepository: VectorRepository = supabase
-  ? new SupabaseVectorRepository()
+export const activeVectorRepository: VectorRepository = qdrantClient
+  ? new QdrantVectorRepository()
   : new LocalVectorRepository();

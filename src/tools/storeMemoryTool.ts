@@ -35,7 +35,7 @@ export async function executeStoreMemoryTool(input: StoreMemoryInput, authentica
     projection2D: { x: Number((embedding[0] * 0.8).toFixed(2)), y: Number((embedding[1] * 0.8).toFixed(2)) },
   };
 
-  // 1. Await vector persistence in active repository (Supabase or Local)
+  // 1. Await vector persistence in active repository (Qdrant or Local)
   const result = await activeVectorRepository.addVector(entry);
   if (!result.success) {
     return {

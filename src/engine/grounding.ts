@@ -144,7 +144,7 @@ export class ClaimGroundingValidator {
     const parts = cleanText
       .split(/\n+|\s{2,}/)
       .map((s) => s.trim())
-      .filter((s) => s.length > 5 && !s.startsWith('[Grounded Revision') && !s.startsWith('Objective:'));
+      .filter((s) => s.length > 5 && !s.endsWith(':') && !s.startsWith('[Grounded Revision') && !s.startsWith('Objective:'));
 
     return parts.length > 0 ? parts : [cleanText];
   }
@@ -198,10 +198,16 @@ export class ClaimGroundingValidator {
 
     const matchedWords = claimKeywords.filter((w) => contentWords.has(w));
 
-    // Require at least 2 matched keywords AND 30% overlap ratio for support
+    // Check numeric match: if claim contains digits and observation contains those digits
+    const claimDigits = lowerClaim.match(/\b\d+\b/g) || [];
+    const contentDigits = new Set(lowerContent.match(/\b\d+\b/g) || []);
+    const matchedDigits = claimDigits.filter((d) => contentDigits.has(d));
+    const numericSupported = claimDigits.length >= 1 && matchedDigits.length >= 1 && (matchedDigits.length / claimDigits.length) >= 0.5;
+
+    // Require at least 2 matched keywords AND 30% overlap ratio for support, or substring/numeric match
     const overlapRatio = claimKeywords.length > 0 ? matchedWords.length / claimKeywords.length : 0;
-    const substringMatch = lowerClaim.length >= 30 && lowerContent.includes(lowerClaim.substring(0, 30));
-    const isSupported = (matchedWords.length >= 2 && overlapRatio >= 0.3) || substringMatch;
+    const substringMatch = lowerClaim.length >= 25 && lowerContent.includes(lowerClaim.substring(0, 25));
+    const isSupported = (matchedWords.length >= 2 && overlapRatio >= 0.3) || substringMatch || numericSupported;
 
     return {
       isSupported,

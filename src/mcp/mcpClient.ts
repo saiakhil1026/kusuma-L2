@@ -23,15 +23,6 @@ export class NexusMatrixMCPClient {
     }));
   }
 
-  public async getGeminiFunctionDeclarations() {
-    const tools = await this.discoverTools();
-    return tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.inputSchema,
-    }));
-  }
-
   public async invokeTool(name: string, args: Record<string, any>): Promise<MCPToolCallResult> {
     const result = await mcpSDKClient.callTool(name, args);
     return {

@@ -1,6 +1,6 @@
 import type { VectorItem, AgentId, Modality } from '../types';
 import { generate768DEmbedding, calculateCosineSimilarity, projectTo2DSpace } from './embeddings';
-import { supabase } from './supabaseClient';
+import { activeVectorRepository } from './supabaseClient';
 
 class VectorDatabase {
   private items: Map<string, VectorItem> = new Map();
@@ -93,7 +93,7 @@ class VectorDatabase {
   ): VectorItem {
     const embedding = generate768DEmbedding(text);
     const id = `vec_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    
+
     const vectorItem: VectorItem = {
       id,
       embedding,
@@ -112,25 +112,20 @@ class VectorDatabase {
 
     this.items.set(id, vectorItem);
 
-    // Sync to Supabase in background if configured
-    if (supabase) {
-      supabase
-        .from('nexus_vectors')
-        .insert({
-          id,
-          text,
-          agent_id: agentId,
-          agent_name: agentName,
-          modality,
-          node_title: nodeTitle,
-          tokens: vectorItem.metadata.tokens,
-          embedding,
-          projection_2d: vectorItem.projection2D,
-        })
-        .then(({ error }) => {
-          if (error) console.warn('Supabase vector sync note:', error.message);
-        });
-    }
+    // Sync to Qdrant in background if configured
+    const userId = 'tenant_default_user';
+    activeVectorRepository.addVector({
+      id,
+      ownerId: userId,
+      text,
+      agentId,
+      agentName,
+      modality,
+      nodeTitle,
+      tokens: vectorItem.metadata.tokens || 0,
+      embedding,
+      projection2D: vectorItem.projection2D ? { x: vectorItem.projection2D[0], y: vectorItem.projection2D[1] } : undefined,
+    }).catch((err) => console.warn('[Qdrant] Vector sync note:', err));
 
     return vectorItem;
   }

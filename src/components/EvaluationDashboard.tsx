@@ -49,7 +49,7 @@ export const EvaluationDashboard: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
-      
+
       {/* Top Banner & Control */}
       <div className="rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl relative overflow-hidden tech-grid-pattern space-y-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -111,49 +111,49 @@ export const EvaluationDashboard: React.FC = () => {
         )}
       </div>
 
-      {/* Separated Execution Modes Section (Gate 8) */}
+      {/* Separated Execution Modes Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* LIVE GEMINI EVALUATION BOX */}
+
+        {/* LANGFUSE TRACED EVALUATION BOX */}
         <div className="rounded-2xl border border-emerald-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-emerald-950 pb-3">
             <div className="flex items-center space-x-2">
               <Activity className="h-4 w-4 text-emerald-400" />
               <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-emerald-300">
-                Live Gemini API Execution Metrics
+                Langfuse Traced Execution Metrics
               </h3>
             </div>
             <span className="font-mono text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-bold">
-              decisionSource: live_gemini
+              mode: langfuse_traced
             </span>
           </div>
 
-          {report.liveMetrics ? (
+          {report.langfuseMetrics ? (
             <div className="grid grid-cols-2 gap-4 font-mono text-xs">
               <div className="rounded-xl border border-emerald-950 bg-nexus-900 p-3 space-y-1">
                 <span className="text-slate-400 text-[10px] uppercase">Evaluated Cases</span>
-                <div className="font-bold text-emerald-300 text-lg">{report.liveMetrics.totalCasesEvaluated}</div>
+                <div className="font-bold text-emerald-300 text-lg">{report.langfuseMetrics.totalCasesEvaluated}</div>
               </div>
               <div className="rounded-xl border border-emerald-950 bg-nexus-900 p-3 space-y-1">
                 <span className="text-slate-400 text-[10px] uppercase">Pass Rate</span>
-                <div className="font-bold text-emerald-300 text-lg">{report.liveMetrics.passRatePct}%</div>
+                <div className="font-bold text-emerald-300 text-lg">{report.langfuseMetrics.passRatePct}%</div>
               </div>
               <div className="rounded-xl border border-emerald-950 bg-nexus-900 p-3 space-y-1">
                 <span className="text-slate-400 text-[10px] uppercase">Groundedness Pct</span>
-                <div className="font-bold text-cyan-300 text-lg">{report.liveMetrics.groundednessPct}%</div>
+                <div className="font-bold text-cyan-300 text-lg">{report.langfuseMetrics.groundednessPct}%</div>
               </div>
               <div className="rounded-xl border border-emerald-950 bg-nexus-900 p-3 space-y-1">
                 <span className="text-slate-400 text-[10px] uppercase">Tool Success</span>
-                <div className="font-bold text-purple-300 text-lg">{report.liveMetrics.toolSuccessRatePct}%</div>
+                <div className="font-bold text-purple-300 text-lg">{report.langfuseMetrics.toolSuccessRatePct}%</div>
               </div>
             </div>
           ) : (
             <div className="py-8 text-center space-y-2">
               <div className="font-mono text-xs font-bold text-amber-300">
-                Live evaluation not yet executed
+                Langfuse evaluation not yet executed
               </div>
               <p className="text-[11px] text-slate-400 max-w-sm mx-auto font-sans leading-relaxed">
-                Provide <code className="text-cyan-300">GEMINI_API_KEY</code> in server environment and run <code className="text-cyan-300">npm run demo:live</code> to generate live model execution evidence.
+                Provide <code className="text-cyan-300">LANGFUSE_SECRET_KEY</code> in server environment to enable Langfuse-traced evaluation.
               </p>
             </div>
           )}
@@ -169,7 +169,7 @@ export const EvaluationDashboard: React.FC = () => {
               </h3>
             </div>
             <span className="font-mono text-[10px] bg-indigo-950 text-cyan-300 border border-indigo-500/30 px-2 py-0.5 rounded font-bold">
-              decisionSource: offline_driver
+              mode: offline_driver
             </span>
           </div>
 
@@ -239,7 +239,7 @@ export const EvaluationDashboard: React.FC = () => {
               </div>
 
               <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-indigo-950">
-                <span>Mode: <strong className="text-cyan-300">{res.runMode}</strong> ({res.decisionSource})</span>
+                <span>Mode: <strong className="text-cyan-300">{res.runMode}</strong></span>
                 <span>Groundedness: <strong className="text-emerald-400">{res.groundednessPct}%</strong></span>
                 <span>Latency: <strong>{res.latencyMs} ms</strong></span>
               </div>

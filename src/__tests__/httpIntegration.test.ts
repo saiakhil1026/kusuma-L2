@@ -16,7 +16,7 @@ describe('HTTP REST Integration & API Contract Verification Suite', () => {
     expect(parsed.mcpToolsCount).toBeGreaterThan(0);
     expect(parsed.vectorCount).toBeGreaterThanOrEqual(0);
     expect(parsed.models.length).toBeGreaterThan(0);
-    expect(['local', 'supabase']).toContain(parsed.persistenceMode);
+    expect(['local', 'qdrant']).toContain(parsed.persistenceMode);
   });
 
   it('POST /api/vectors/search matches canonical VectorSearchResponseSchema and returns item object structure', async () => {

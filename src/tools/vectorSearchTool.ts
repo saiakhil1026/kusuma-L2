@@ -19,7 +19,7 @@ export async function executeVectorSearchTool(input: VectorSearchInput, authenti
   const cacheCheck = semanticCache.checkCache(validated.query);
   const queryEmbedding = generateHashEmbedding(validated.query);
 
-  // Search through production active VectorRepository interface (Supabase RPC or Local)
+  // Search through production active VectorRepository interface (Qdrant or Local)
   const repositoryResults = await activeVectorRepository.searchVectors(queryEmbedding, validated.topK, ownerId);
 
   let formattedMatches = repositoryResults.map((r) => ({

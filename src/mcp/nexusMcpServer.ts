@@ -5,6 +5,9 @@ import { executeStoreMemoryTool } from '../tools/storeMemoryTool';
 import { executeRefactorCodeTool } from '../tools/refactorCodeTool';
 import { executeZeroTrustAuditTool } from '../tools/zeroTrustAuditTool';
 import { executeParseVisionTagsTool } from '../tools/parseVisionTagsTool';
+import { executeWebSearchTool } from '../tools/webSearchTool';
+import { executeCodeExecuteTool } from '../tools/codeExecuteTool';
+import { executeFileSystemTool } from '../tools/fileSystemTool';
 
 export const server = new McpServer({
   name: 'NexusMatrix-MCP-Server',
@@ -35,7 +38,7 @@ server.tool(
 // Register Tool 2: store_memory
 server.tool(
   'store_memory',
-  'Indexes a deliverable payload into the 768-dimensional vector memory store and syncs to Supabase.',
+  'Indexes a deliverable payload into the 768-dimensional vector memory store and syncs to Qdrant.',
   {
     text: z.string().min(1, 'Memory text payload cannot be empty'),
     agentId: z.string().min(1, 'agentId is required'),
@@ -117,6 +120,72 @@ server.tool(
       return {
         isError: true,
         content: [{ type: 'text', text: `parse_vision_tags validation error: ${err.message}` }],
+      };
+    }
+  }
+);
+
+// Register Tool 6: web_search
+server.tool(
+  'web_search',
+  'Executes live web searches for empirical evidence, architectural standards, and factual citations.',
+  {
+    query: z.string().min(1, 'Query string cannot be empty'),
+    topK: z.number().min(1).max(10).optional().default(3),
+    domainFilter: z.string().optional(),
+  },
+  async (args) => {
+    try {
+      const res = await executeWebSearchTool(args);
+      return { content: [{ type: 'text', text: JSON.stringify(res, null, 2) }] };
+    } catch (err: any) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `web_search error: ${err.message}` }],
+      };
+    }
+  }
+);
+
+// Register Tool 7: code_execute
+server.tool(
+  'code_execute',
+  'Executes verified JavaScript/TypeScript code in an isolated sandbox and captures stdout output and runtime status.',
+  {
+    code: z.string().min(1, 'Code snippet cannot be empty'),
+    language: z.enum(['javascript', 'typescript']).optional().default('javascript'),
+    timeoutMs: z.number().min(50).max(5000).optional().default(1000),
+  },
+  async (args) => {
+    try {
+      const res = await executeCodeExecuteTool(args);
+      return { content: [{ type: 'text', text: JSON.stringify(res, null, 2) }] };
+    } catch (err: any) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `code_execute error: ${err.message}` }],
+      };
+    }
+  }
+);
+
+// Register Tool 8: file_system
+server.tool(
+  'file_system',
+  'Performs virtual workspace artifact operations (read, write, list, exists) to inspect or persist deliverables.',
+  {
+    action: z.enum(['read', 'write', 'list', 'exists']),
+    filePath: z.string().min(1, 'filePath is required'),
+    content: z.string().optional(),
+  },
+  async (args) => {
+    try {
+      const res = await executeFileSystemTool(args);
+      return { content: [{ type: 'text', text: JSON.stringify(res, null, 2) }] };
+    } catch (err: any) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `file_system error: ${err.message}` }],
       };
     }
   }

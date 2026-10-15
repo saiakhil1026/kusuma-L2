@@ -59,12 +59,15 @@ describe('MCP Tools Implementation Suite (Gates 12 & 13)', () => {
 
   it('should discover all registered MCP tools via mcpClient.discoverTools()', async () => {
     const tools = await mcpClient.discoverTools();
-    expect(tools.length).toBeGreaterThanOrEqual(5);
+    expect(tools.length).toBeGreaterThanOrEqual(8);
     const names = tools.map((t) => t.name);
     expect(names).toContain('vector_search');
     expect(names).toContain('store_memory');
     expect(names).toContain('refactor_code');
     expect(names).toContain('zero_trust_audit');
     expect(names).toContain('parse_vision_tags');
+    expect(names).toContain('web_search');
+    expect(names).toContain('code_execute');
+    expect(names).toContain('file_system');
   });
 });

@@ -23,42 +23,36 @@ async function generateCuratedTraces() {
     {
       filename: 'offline-success.json',
       objective: 'Retrieve 768D vector similarity context memory for authentication module.',
-      model: 'gemini-3.7-flash',
       forceOffline: true,
       maxSteps: 6,
     },
     {
       filename: 'tool-error-recovery.json',
       objective: 'Perform zero_trust_audit on unsafe payload (trigger_error_recovery): const q = "SELECT * FROM users WHERE id = " + req.query.id;',
-      model: 'gemini-3.7-flash',
       forceOffline: true,
       maxSteps: 6,
     },
     {
       filename: 'reflection-recovery.json',
       objective: 'Analyze vision spatial diagram and extract UI topology element tags.',
-      model: 'gemini-3.7-flash',
       forceOffline: true,
       maxSteps: 6,
     },
     {
       filename: 'grounded-answer.json',
       objective: 'Refactor code: fetch("/api/data").then(res => res.json()).then(data => console.log(data));',
-      model: 'gemini-3.1-pro-preview',
       forceOffline: true,
       maxSteps: 6,
     },
     {
-      filename: 'live-gemini-provenance.json',
+      filename: 'live-langfuse-provenance.json',
       objective: 'Search vector memory for zero-trust microservice auth architecture specs.',
-      model: 'gemini-3.7-flash',
-      forceOffline: false, // Attempts live Gemini API call when API key is available
+      forceOffline: false, // Attempts live Langfuse API call when API key is available
       maxSteps: 6,
     },
     {
       filename: 'bounded-failure-execution.json',
       objective: 'Execute complex multi-step analysis exceeding step budget limits.',
-      model: 'gemini-3.7-flash',
       forceOffline: true,
       maxSteps: 1, // Forces step budget boundary failure
     },
@@ -67,23 +61,17 @@ async function generateCuratedTraces() {
   for (const sc of scenarios) {
     console.log(`Generating trace [${sc.filename}]...`);
     const res = await dynamicAgentRunner.runDynamicLoop(sc.objective, {
-      model: sc.model as any,
       forceOffline: sc.forceOffline,
       maxSteps: sc.maxSteps,
     });
 
     const curatedRecord = {
       executionId: res.id,
-      localAttemptId: res.localAttemptId,
+      langfuseTraceId: res.langfuseTraceId,
       timestamp: res.timestamp,
-      executionMode: res.isLive ? 'model_mediated_mcp' : 'test',
-      decisionSource: res.decisionSource,
-      provider: res.provider,
-      modelTarget: res.modelTarget,
-      providerRequestId: res.providerRequestId || null, // NEVER manufacture provider request IDs (Issue 1)
-      isLive: res.isLive,
-      userObjective: res.objective,
+      executionMode: res.isLive ? 'langfuse_traced' : 'offline',
       status: res.status,
+      userObjective: res.objective,
       steps: res.steps,
       observations: res.observations,
       reflectionVerdict: res.reflectionVerdict,

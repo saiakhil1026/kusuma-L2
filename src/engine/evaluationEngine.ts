@@ -18,8 +18,7 @@ export interface BenchmarkCaseExecutionResult {
   caseId: string;
   objective: string;
   category: string;
-  runMode: 'live' | 'offline';
-  decisionSource: 'live_gemini' | 'offline_driver';
+  runMode: 'langfuse' | 'offline';
   execution: AgentLoopExecutionResult;
   passed: boolean;
   toolSelectionMatched: boolean;
@@ -40,8 +39,7 @@ export interface BenchmarkCaseExecutionResult {
 }
 
 export interface EvaluationGroupMetrics {
-  runMode: 'live' | 'offline';
-  decisionSource: 'live_gemini' | 'offline_driver';
+  runMode: 'langfuse' | 'offline';
   totalCasesEvaluated: number;
   passedCasesCount: number;
   passRatePct: number;
@@ -58,7 +56,7 @@ export interface ComprehensiveEvaluationReport {
   timestamp: string;
   version: string;
   datasetName: string;
-  liveMetrics: EvaluationGroupMetrics | null;
+  langfuseMetrics: EvaluationGroupMetrics | null;
   offlineMetrics: EvaluationGroupMetrics;
   caseResults: BenchmarkCaseExecutionResult[];
   summaryMessage: string;
@@ -72,7 +70,7 @@ export class FrameworkEvaluationEngine {
     for (const testCase of testCases) {
       const execution = await dynamicAgentRunner.runDynamicLoop(testCase.objective);
 
-      const executedTools = Array.from(new Set(execution.steps.map((s) => s.toolName).filter(Boolean) as string[]));
+      const executedTools = Array.from(new Set(execution.steps.filter((s) => !s.isError).map((s) => s.toolName).filter(Boolean) as string[]));
 
       // 1. Multilabel Tool Selection Classification Metrics (Issue 9)
       const tp = executedTools.filter((t) => testCase.requiredEvidence.includes(t)).length;
@@ -106,8 +104,7 @@ export class FrameworkEvaluationEngine {
         caseId: testCase.id,
         objective: testCase.objective,
         category: testCase.category,
-        runMode: execution.isLive ? 'live' : 'offline',
-        decisionSource: execution.decisionSource,
+        runMode: execution.isLive ? 'langfuse' : 'offline',
         execution,
         passed: casePassed,
         toolSelectionMatched,
@@ -128,36 +125,34 @@ export class FrameworkEvaluationEngine {
       });
     }
 
-    // Separate Live vs Offline Execution Metrics (Gate 8 & Issue 9)
-    const liveCases = caseResults.filter((c) => c.runMode === 'live');
+    // Separate Langfuse vs Offline Execution Metrics
+    const langfuseCases = caseResults.filter((c) => c.runMode === 'langfuse');
     const offlineCases = caseResults.filter((c) => c.runMode === 'offline');
 
-    const liveMetrics = liveCases.length > 0 ? this.calculateGroupMetrics('live', 'live_gemini', liveCases) : null;
-    const offlineMetrics = this.calculateGroupMetrics('offline', 'offline_driver', offlineCases);
+    const langfuseMetrics = langfuseCases.length > 0 ? this.calculateGroupMetrics('langfuse', langfuseCases) : null;
+    const offlineMetrics = this.calculateGroupMetrics('offline', offlineCases);
 
     return {
       timestamp: new Date().toISOString(),
       version: datasetV1.version,
       datasetName: datasetV1.datasetName,
-      liveMetrics,
+      langfuseMetrics,
       offlineMetrics,
       caseResults,
-      summaryMessage: liveMetrics
-        ? `Live evaluation completed over ${liveCases.length} held-out cases. Offline evaluation completed over ${offlineCases.length} cases.`
-        : `Offline benchmark evaluation completed over ${offlineCases.length} held-out cases. Live Gemini evaluation not yet executed (set GEMINI_API_KEY to run live benchmark).`,
+      summaryMessage: langfuseMetrics
+        ? `Langfuse-traced evaluation completed over ${langfuseCases.length} held-out cases. Offline evaluation completed over ${offlineCases.length} cases.`
+        : `Offline benchmark evaluation completed over ${offlineCases.length} held-out cases. Langfuse tracing not yet executed (set LANGFUSE keys to run live evaluation).`,
     };
   }
 
   private calculateGroupMetrics(
-    runMode: 'live' | 'offline',
-    decisionSource: 'live_gemini' | 'offline_driver',
+    runMode: 'langfuse' | 'offline',
     cases: BenchmarkCaseExecutionResult[]
   ): EvaluationGroupMetrics {
     const totalCasesEvaluated = cases.length;
     if (totalCasesEvaluated === 0) {
       return {
         runMode,
-        decisionSource,
         totalCasesEvaluated: 0,
         passedCasesCount: 0,
         passRatePct: 0,
@@ -210,7 +205,6 @@ export class FrameworkEvaluationEngine {
 
     return {
       runMode,
-      decisionSource,
       totalCasesEvaluated,
       passedCasesCount,
       passRatePct,

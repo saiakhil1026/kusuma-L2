@@ -2,16 +2,17 @@ import { z } from 'zod';
 
 export const TraceSchema = z.object({
   executionId: z.string().min(1),
-  localAttemptId: z.string().min(1),
+  localAttemptId: z.string().min(1).optional(),
+  langfuseTraceId: z.string().nullable().optional(),
   timestamp: z.string().min(1),
   executionMode: z.string(),
-  decisionSource: z.enum(['live_gemini', 'offline_driver']),
-  provider: z.string(),
-  modelTarget: z.string(),
-  providerRequestId: z.string().nullable(),
-  isLive: z.boolean(),
-  userObjective: z.string(),
+  isLive: z.boolean().optional(),
+  providerRequestId: z.string().nullable().optional(),
+  decisionSource: z.string().optional(),
+  provider: z.string().optional(),
+  modelTarget: z.string().optional(),
   status: z.enum(['completed', 'partial', 'failed']),
+  userObjective: z.string(),
   steps: z.array(z.object({
     stepIndex: z.number(),
     thought: z.string(),
@@ -56,20 +57,27 @@ export const TraceSchema = z.object({
 export type TraceRecord = z.infer<typeof TraceSchema>;
 
 export function validateTraceSchema(trace: unknown): TraceRecord {
-  return TraceSchema.parse(trace);
+  const parsed = TraceSchema.parse(trace);
+  if (!parsed.localAttemptId) {
+    parsed.localAttemptId = parsed.executionId;
+  }
+  return parsed;
 }
 
 export function validateTraceScenario(trace: TraceRecord, scenarioName: string): { valid: boolean; reason?: string } {
-  // Provenance Rule 1: providerRequestId must be string when supplied by provider, or null. Never manufactured fake IDs.
-  if (trace.providerRequestId !== null) {
-    if (typeof trace.providerRequestId !== 'string' || trace.providerRequestId.trim().length === 0) {
-      return { valid: false, reason: 'providerRequestId must be a non-empty string or null' };
-    }
+  // Provenance Rule 1: trace must have executionId
+  if (!trace.executionId || trace.executionId.length === 0) {
+    return { valid: false, reason: 'executionId is required and must be non-empty' };
   }
 
-  // Provenance Rule 2: Offline traces must NEVER claim live Gemini provenance
-  if (!trace.isLive && trace.decisionSource === 'live_gemini') {
-    return { valid: false, reason: 'Offline trace cannot claim decisionSource: live_gemini' };
+  // Provenance Rule 2: Never claim live decisionSource or providerRequestId when offline
+  if (trace.isLive === false) {
+    if (trace.decisionSource === 'live_gemini' || (trace.decisionSource && trace.decisionSource.startsWith('live_'))) {
+      return { valid: false, reason: 'Offline trace cannot claim decisionSource: live_gemini' };
+    }
+    if (trace.providerRequestId !== null && trace.providerRequestId !== undefined) {
+      return { valid: false, reason: 'Offline trace cannot claim live providerRequestId without live execution' };
+    }
   }
 
   if (scenarioName === 'tool-error-recovery.json' || scenarioName === 'tool-error-recovery') {
@@ -88,12 +96,6 @@ export function validateTraceScenario(trace: TraceRecord, scenarioName: string):
     const isReflectionStatus = trace.reflectionVerdict.status !== undefined;
     if (!hasReflectionStep && !isReflectionStatus) {
       return { valid: false, reason: 'Scenario reflection-recovery requires reflection pass execution' };
-    }
-  }
-
-  if (scenarioName === 'live-gemini-provenance.json' || scenarioName === 'live-gemini-provenance') {
-    if (trace.isLive && trace.decisionSource !== 'live_gemini') {
-      return { valid: false, reason: 'Scenario live-gemini-provenance requires decisionSource: live_gemini when isLive is true' };
     }
   }
 

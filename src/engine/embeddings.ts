@@ -1,18 +1,12 @@
 /**
  * NexusMatrix 768-Dimensional Vector Embedding Engine
- * Supported Models:
- * 1. Google Gemini Cloud Model: "text-embedding-004" (768-dimensional native embeddings via @google/genai)
- * 2. High-Density Local Model: 768D Deterministic Harmonic Feature Projection Model
+ * Local Deterministic Harmonic Feature Projection Model (768 dimensions)
  */
-
-import { GoogleGenAI } from '@google/genai';
-import { getGeminiApiKey } from './geminiClient';
 
 /**
  * Generates a 768-dimensional vector embedding for text.
- * NOTE (M6): In live mode with GEMINI_API_KEY, this uses Google Gemini's `text-embedding-004`.
- * In offline/local mode, this uses a deterministic 768D harmonic n-gram feature projection algorithm.
- * The local mode is for fast, zero-dependency offline testing — it is not a neural language model embedding.
+ * Uses a deterministic 768D harmonic n-gram feature projection algorithm.
+ * Fast, zero-dependency offline mode — not a neural language model embedding.
  */
 export function generate768DEmbedding(text: string): number[] {
   const DIMENSIONS = 768;
@@ -74,29 +68,6 @@ export function generate768DEmbedding(text: string): number[] {
 export const generateHashEmbedding = generate768DEmbedding;
 
 /**
- * Async Google Gemini "text-embedding-004" Model Fetcher
- */
-export async function getGemini768DEmbeddingAsync(text: string): Promise<number[]> {
-  const apiKey = getGeminiApiKey();
-  if (apiKey) {
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-      const response: any = await ai.models.embedContent({
-        model: 'text-embedding-004',
-        contents: text,
-      });
-      const values = response.embedding?.values || response.embeddings?.[0]?.values;
-      if (values && values.length === 768) {
-        return normalizeVector(values);
-      }
-    } catch (err) {
-      console.warn('Gemini text-embedding-004 fetch note, using local 768D engine:', err);
-    }
-  }
-  return generate768DEmbedding(text);
-}
-
-/**
  * L2 Normalization so dot product equals Cosine Similarity
  */
 export function normalizeVector(vec: number[]): number[] {
@@ -129,7 +100,7 @@ export function calculateCosineSimilarity(vecA: number[], vecB: number[]): numbe
 
   const denominator = Math.sqrt(normA) * Math.sqrt(normB);
   if (denominator === 0) return 0;
-  
+
   const similarity = dotProduct / denominator;
   return Math.min(1.0, Math.max(-1.0, similarity));
 }

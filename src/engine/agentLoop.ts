@@ -2,10 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
 import { mcpSDKClient } from '../mcp/nexusMcpClient';
-import { executeAgentInference, getGeminiApiKey, type InferenceResult } from './geminiClient';
 import { reflectionEngine, type ReflectionVerdict } from './reflectionEngine';
 import { claimGroundingValidator, type GroundedSynthesisResult } from './grounding';
-import type { ModelName } from '../types';
+import { getLangfuseClient, executeAgentInference, type InferenceResult } from './geminiClient';
 
 // Runtime Zod Schemas for Model Actions (Gate 4)
 export const ToolCallActionSchema = z.object({
@@ -47,16 +46,12 @@ export interface AgentLoopStep {
   latencyMs: number;
 }
 
-// Execution Provenance (Gate 2 & Issue 1)
+// Execution Provenance via Langfuse
 export interface AgentLoopExecutionResult {
   id: string;
   objective: string;
   status: 'completed' | 'partial' | 'failed';
-  decisionSource: 'live_gemini' | 'offline_driver';
-  provider: string;
-  modelTarget: ModelName;
-  localAttemptId: string;
-  providerRequestId: string | null;
+  langfuseTraceId: string | null;
   timestamp: string;
   isLive: boolean;
   steps: AgentLoopStep[];
@@ -71,7 +66,6 @@ export interface AgentLoopExecutionResult {
 }
 
 export interface DynamicAgentLoopOptions {
-  model?: ModelName;
   maxSteps?: number;
   maxRepairAttempts?: number;
   maxToolFailureRetries?: number;
@@ -87,7 +81,6 @@ export class DynamicAgentLoopRunner {
     options: DynamicAgentLoopOptions = {}
   ): Promise<AgentLoopExecutionResult> {
     const {
-      model = 'gemini-3.7-flash',
       maxSteps = 10,
       maxRepairAttempts = 2,
       maxToolFailureRetries = 2,
@@ -100,7 +93,6 @@ export class DynamicAgentLoopRunner {
     const startTime = performance.now();
     const executionId = `trace_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const timestampStr = new Date().toISOString();
-    // Mod3: Local observationLedger array per invocation to prevent concurrent execution race conditions
     const observationLedger: ObservationItem[] = [];
     const steps: AgentLoopStep[] = [];
     let currentStep = 1;
@@ -111,16 +103,24 @@ export class DynamicAgentLoopRunner {
     let repairAttempts = 0;
     let toolFailureRetries = 0;
 
-    const activeApiKey = getGeminiApiKey();
     const isTestEnv = typeof process !== 'undefined' && (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test');
-    const isLiveAttempt = Boolean(activeApiKey) && !isTestEnv && !forceOffline;
+    const langfuse = isTestEnv ? null : getLangfuseClient();
+    const isLiveAttempt = Boolean(langfuse) && !forceOffline && !isTestEnv;
 
     let lastInferenceResult: InferenceResult | null = null;
-    let liveExecutionFailed = false;
 
-    // Discover tools from real MCP Client (Gate 2)
+    // Discover tools from real MCP Client
     const mcpTools = await mcpSDKClient.listTools();
     const availableToolNames = new Set(mcpTools.map((t) => t.name));
+
+    // Start Langfuse trace
+    let langfuseTraceId: string | null = null;
+    let mainSpan: any;
+    if (langfuse) {
+      const trace = langfuse.trace({ id: executionId, name: objective });
+      langfuseTraceId = trace.id;
+      mainSpan = trace.span({ name: 'agent_loop' });
+    }
 
     while (currentStep <= maxSteps && !isFinished) {
       if (signal?.aborted) {
@@ -134,11 +134,9 @@ export class DynamicAgentLoopRunner {
       // 1. Build prompt context with ledger history
       const promptContext = `[Objective]: ${objective}
 [Observation Ledger]:
-${
-  observationLedger.length > 0
-    ? JSON.stringify(observationLedger, null, 2)
-    : 'No observations recorded yet.'
-}
+${observationLedger.length > 0
+  ? JSON.stringify(observationLedger, null, 2)
+  : 'No observations recorded yet.'}
 
 [Available MCP Tools]:
 ${JSON.stringify(mcpTools, null, 2)}
@@ -150,16 +148,24 @@ Option A (Tool Call):
 Option B (Finish):
 {"type": "finish", "answer": "<consolidated_grounded_answer>"}`;
 
-      // 2. Call Gemini model / driver with provider timeout
+      // 2. Call inference with Langfuse tracing and provider timeout
       let inference: InferenceResult;
       try {
         inference = await this.withTimeout(
-          executeAgentInference('orchestrator', model, promptContext, undefined, undefined, { forceOffline }),
+          executeAgentInference('orchestrator', promptContext, undefined, undefined, { forceOffline }),
           providerTimeoutMs,
           'Provider inference timeout'
         );
         lastInferenceResult = inference;
         totalTokens += inference.tokens;
+
+        if (langfuse && mainSpan) {
+          mainSpan.end({
+            step: currentStep,
+            action: 'inference',
+            latencyMs: inference.latencyMs,
+          });
+        }
       } catch (err: any) {
         const obsId = `O${observationLedger.length + 1}`;
         const errorMsg = err.message || String(err);
@@ -182,7 +188,6 @@ Option B (Finish):
         });
 
         if (isLiveAttempt) {
-          liveExecutionFailed = true;
           rawFinalAnswer = `[LIVE API FAILURE]: ${errorMsg}`;
           executionStatus = 'failed';
           break;
@@ -304,6 +309,16 @@ Option B (Finish):
           observation: toolResult.content,
           latencyMs: Math.round(performance.now() - stepStartTime),
         });
+
+        // Log tool call to Langfuse
+        if (langfuse && mainSpan) {
+          mainSpan.end({
+            step: currentStep,
+            action: 'tool_call',
+            toolName: tool,
+            isError: Boolean(toolResult.isError),
+          });
+        }
       } else if (parsedAction.type === 'finish') {
         isFinished = true;
         executionStatus = 'completed';
@@ -329,7 +344,6 @@ Option B (Finish):
     let verdict = reflectionEngine.evaluateDeliverable(objective, rawFinalAnswer, observationLedger);
 
     // Iterative recovery loop: Executes recommended tool actions while evidence is missing (M5)
-    // Strictly obeys global maxSteps budget (Issue 8)
     while (verdict.status === 'needs_more_evidence' && verdict.recommendedAction && currentStep <= maxSteps) {
       const recTool = verdict.recommendedAction.tool;
       const recArgs = verdict.recommendedAction.arguments;
@@ -377,9 +391,7 @@ Option B (Finish):
 
     // Grounding & reflection impact execution status: completed cannot be returned if grounding failed or contradicted (Issue 7)
     if (!verdict.passed || !groundingResult.passed) {
-      if (liveExecutionFailed) {
-        executionStatus = 'failed';
-      } else if (verdict.confidence > 0.4 && observationLedger.some((o) => !o.isError) && groundingResult.supportedClaimCount > 0) {
+      if (verdict.confidence > 0.4 && observationLedger.some((o) => !o.isError) && groundingResult.supportedClaimCount > 0) {
         executionStatus = 'partial';
       } else {
         executionStatus = 'failed';
@@ -396,30 +408,24 @@ Option B (Finish):
 
     const totalLatencyMs = Math.round(performance.now() - startTime);
 
-    // Provenance Integrity (Issue 1)
-    const decisionSource = isLiveAttempt
-      ? 'live_gemini'
-      : lastInferenceResult?.decisionSource || 'offline_driver';
-
-    const provider = isLiveAttempt
-      ? 'google'
-      : lastInferenceResult?.provider || 'offline';
-
-    const isLive = isLiveAttempt || lastInferenceResult?.isRealApi || false;
-    const localAttemptId = lastInferenceResult?.localAttemptId || executionId;
-    const providerRequestId = lastInferenceResult?.providerRequestId || null;
+    // Save Execution Trace to Langfuse
+    if (langfuse && mainSpan) {
+      mainSpan.end({
+        finalAnswer: finalAnswer.substring(0, 500),
+        groundingResult,
+        reflectionVerdict: verdict,
+        totalSteps: steps.length,
+        totalObservations: observationLedger.length,
+      });
+    }
 
     const result: AgentLoopExecutionResult = {
       id: executionId,
       objective,
-      status: liveExecutionFailed ? 'failed' : executionStatus,
-      decisionSource,
-      provider,
-      modelTarget: model,
-      localAttemptId,
-      providerRequestId,
+      status: executionStatus,
+      langfuseTraceId,
       timestamp: timestampStr,
-      isLive,
+      isLive: !isTestEnv && isLiveAttempt && (lastInferenceResult?.langfuseTraceId !== null),
       steps,
       observations: observationLedger,
       finalAnswer,
@@ -430,8 +436,8 @@ Option B (Finish):
       reflectionVerdict: verdict,
     };
 
-    // 7. Save Execution Trace JSON with Provenance (Gate 2 & 15)
-    const tracePath = this.saveExecutionTrace(result, model);
+    // 7. Save Execution Trace JSON with Langfuse Provenance
+    const tracePath = this.saveExecutionTrace(result);
     result.tracePath = tracePath;
 
     return result;
@@ -461,7 +467,7 @@ Option B (Finish):
     }
   }
 
-  private saveExecutionTrace(result: AgentLoopExecutionResult, _model: ModelName): string {
+  private saveExecutionTrace(result: AgentLoopExecutionResult): string {
     if (typeof window !== 'undefined') {
       return `trace_${result.id}`;
     }
@@ -477,16 +483,11 @@ Option B (Finish):
 
       const traceRecord = {
         executionId: result.id,
-        localAttemptId: result.localAttemptId,
+        langfuseTraceId: result.langfuseTraceId,
         timestamp: result.timestamp,
-        executionMode: result.isLive ? 'model_mediated_mcp' : 'test',
-        decisionSource: result.decisionSource,
-        provider: result.provider,
-        modelTarget: result.modelTarget,
-        providerRequestId: result.providerRequestId,
-        isLive: result.isLive,
-        userObjective: result.objective,
+        executionMode: result.isLive ? 'langfuse_traced' : 'offline',
         status: result.status,
+        userObjective: result.objective,
         steps: result.steps,
         observations: result.observations,
         reflectionVerdict: result.reflectionVerdict,

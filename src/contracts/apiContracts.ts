@@ -11,7 +11,7 @@ export const HealthStatsResponseSchema = z.object({
   models: z.array(z.string()),
   cacheHitRatioPct: z.number(),
   timestamp: z.number(),
-  persistenceMode: z.enum(['local', 'supabase']),
+  persistenceMode: z.enum(['local', 'qdrant']),
 });
 
 export type HealthStatsResponse = z.infer<typeof HealthStatsResponseSchema>;
@@ -50,7 +50,7 @@ export const VectorSearchResultItemSchema = z.object({
 
 export const VectorSearchResponseSchema = z.object({
   query: z.string(),
-  persistenceMode: z.enum(['local', 'supabase']),
+  persistenceMode: z.enum(['local', 'qdrant']),
   cacheResult: z.object({
     hit: z.boolean(),
     similarity: z.number(),
@@ -75,7 +75,6 @@ export const VectorAddRequestSchema = z.object({
 // ============================================================================
 export const AgentLoopRunRequestSchema = z.object({
   objective: z.string().min(1, 'Objective string cannot be empty'),
-  model: z.enum(['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.1-pro-preview']).optional().default('gemini-3.7-flash'),
   maxSteps: z.number().min(1).max(20).optional().default(6),
 });
 

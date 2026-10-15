@@ -1,22 +1,21 @@
-export type AgentId = 
-  | 'orchestrator' 
-  | 'summarizer' 
-  | 'vision' 
-  | 'code' 
-  | 'logic' 
-  | 'guardrail' 
-  | 'synthesizer';
-
-export type ModelName = 'gemini-3.7-flash' | 'gemini-3.6-flash' | 'gemini-3.1-pro-preview';
+export type AgentId =
+  | 'orchestrator'
+  | 'summarizer'
+  | 'vision'
+  | 'code'
+  | 'logic'
+  | 'guardrail'
+  | 'synthesizer'
+  | 'researcher'
+  | 'executor'
+  | 'debugger';
 
 export type Modality = 'text' | 'vision' | 'code' | 'structured';
 
 export interface ExecutionProvenance {
-  localAttemptId: string;
-  providerRequestId: string | null;
-  decisionSource: 'live_gemini' | 'offline_driver';
-  provider: 'google' | 'offline';
-  isLive: boolean;
+  langfuseTraceId: string | null;
+  langfuseSessionId?: string;
+  timestamp: string;
 }
 
 export interface IMultiModalAgent {
@@ -24,7 +23,6 @@ export interface IMultiModalAgent {
   name: string;
   role: string;
   description: string;
-  model: ModelName;
   supportedInputModalities: Modality[];
   supportedOutputModalities: Modality[];
   color: string;
@@ -80,7 +78,6 @@ export interface DAGNode {
   id: string;
   title: string;
   agentId: AgentId;
-  model: ModelName;
   inputDescription: string;
   dependencies: string[]; // array of node IDs that must complete first
   status: DAGNodeStatus;
@@ -116,10 +113,6 @@ export interface SystemStats {
   vectorCount: number;
   cacheHitRatio: number;
   totalQueries: number;
-  activeModels: {
-    'gemini-3.7-flash': boolean;
-    'gemini-3.1-pro-preview': boolean;
-  };
   averageLatencyMs: number;
   telemetryEventsCount: number;
 }

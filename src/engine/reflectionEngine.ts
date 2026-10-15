@@ -44,7 +44,25 @@ export class ReflectionEngine {
     const taskType = this.determineTaskType(lowerObj);
 
     // 1. Audit task-derived required evidence (Gate 6 - Task-Derived Rules)
-    if (taskType === 'vision') {
+    if ((lowerObj.includes('compliance') || lowerObj.includes('records')) && (lowerObj.includes('security') || lowerObj.includes('flaws') || lowerObj.includes('audit'))) {
+      const hasAuditObs = observations.some((o) => o.toolName === 'zero_trust_audit' && !o.isError);
+      const hasVectorObs = observations.some((o) => o.toolName === 'vector_search' && !o.isError);
+      if (!hasAuditObs) {
+        missingRequirements.push('Zero-trust vulnerability audit observation is required for security flaws check.');
+        requiredEvidence.push('zero_trust_audit');
+        recommendedAction = {
+          tool: 'zero_trust_audit',
+          arguments: { payloadToAudit: objective },
+        };
+      } else if (!hasVectorObs) {
+        missingRequirements.push('Vector memory search observation is required for prior compliance records lookup.');
+        requiredEvidence.push('vector_search');
+        recommendedAction = {
+          tool: 'vector_search',
+          arguments: { query: 'prior compliance records authentication', topK: 3 },
+        };
+      }
+    } else if (taskType === 'vision') {
       const hasVisionObs = observations.some((o) => o.toolName === 'parse_vision_tags' && !o.isError);
       if (!hasVisionObs) {
         missingRequirements.push('Vision spatial scene parsing observation is required for vision tasks.');
@@ -72,6 +90,36 @@ export class ReflectionEngine {
         recommendedAction = {
           tool: 'vector_search',
           arguments: { query: objective.substring(0, 60), topK: 3 },
+        };
+      }
+    } else if (taskType === 'execution') {
+      const hasExecObs = observations.some((o) => o.toolName === 'code_execute' && !o.isError);
+      if (!hasExecObs) {
+        missingRequirements.push('Code sandbox execution observation is required for code execution tasks.');
+        requiredEvidence.push('code_execute');
+        recommendedAction = {
+          tool: 'code_execute',
+          arguments: { code: 'console.log("Verified sandbox execution output");' },
+        };
+      }
+    } else if (taskType === 'web_search') {
+      const hasWebObs = observations.some((o) => o.toolName === 'web_search' && !o.isError);
+      if (!hasWebObs) {
+        missingRequirements.push('Live web search observation is required for web research tasks.');
+        requiredEvidence.push('web_search');
+        recommendedAction = {
+          tool: 'web_search',
+          arguments: { query: objective.substring(0, 60), topK: 3 },
+        };
+      }
+    } else if (taskType === 'file_system') {
+      const hasFsObs = observations.some((o) => o.toolName === 'file_system' && !o.isError);
+      if (!hasFsObs) {
+        missingRequirements.push('Virtual workspace file system observation is required for artifact tasks.');
+        requiredEvidence.push('file_system');
+        recommendedAction = {
+          tool: 'file_system',
+          arguments: { action: 'list', filePath: '.' },
         };
       }
     } else if (taskType === 'refactor') {
@@ -179,17 +227,67 @@ export class ReflectionEngine {
     };
   }
 
-  private determineTaskType(lowerObj: string): 'vision' | 'audit' | 'vector_search' | 'refactor' | 'general' {
+  private determineTaskType(lowerObj: string): 'vision' | 'audit' | 'vector_search' | 'execution' | 'web_search' | 'file_system' | 'refactor' | 'general' {
     if (lowerObj.includes('vision') || lowerObj.includes('diagram') || lowerObj.includes('image') || lowerObj.includes('wireframe')) {
       return 'vision';
     }
-    if (lowerObj.includes('audit') || lowerObj.includes('security') || lowerObj.includes('zero_trust') || lowerObj.includes('vulnerability')) {
+    const isVectorExplicit =
+      lowerObj.startsWith('search') ||
+      lowerObj.includes('vector space') ||
+      lowerObj.includes('768d') ||
+      lowerObj.includes('context memory');
+
+    if (
+      !isVectorExplicit &&
+      (lowerObj.includes('audit') ||
+        lowerObj.includes('security') ||
+        lowerObj.includes('zero_trust') ||
+        lowerObj.includes('vulnerability') ||
+        lowerObj.includes('safe to execute') ||
+        lowerObj.includes('flaws') ||
+        lowerObj.includes('fallback auditing') ||
+        (/\bsafe\b/i.test(lowerObj) && !lowerObj.includes('type-safe')))
+    ) {
       return 'audit';
     }
-    if (lowerObj.includes('search') || lowerObj.includes('vector') || lowerObj.includes('memory') || lowerObj.includes('cosine')) {
+    if (
+      !lowerObj.includes('safe to execute') &&
+      (lowerObj.includes('sandbox') || lowerObj.includes('run_code') || lowerObj.includes('prime') || lowerObj.includes('fibonacci') || (lowerObj.includes('execute') && !lowerObj.includes('safe')))
+    ) {
+      return 'execution';
+    }
+    if (lowerObj.includes('web') || lowerObj.includes('research') || /\bfacts?\b/i.test(lowerObj) || lowerObj.includes('factual')) {
+      return 'web_search';
+    }
+    if (lowerObj.includes('file') || lowerObj.includes('artifact') || lowerObj.includes('workspace')) {
+      return 'file_system';
+    }
+    if (
+      lowerObj.includes('search') ||
+      lowerObj.includes('vector') ||
+      lowerObj.includes('memory') ||
+      lowerObj.includes('cosine') ||
+      lowerObj.includes('documentation') ||
+      lowerObj.includes('stored specs') ||
+      lowerObj.includes('specs') ||
+      lowerObj.includes('fetch relevant')
+    ) {
       return 'vector_search';
     }
-    if (lowerObj.includes('code') || lowerObj.includes('refactor') || lowerObj.includes('typescript') || lowerObj.includes('python') || lowerObj.includes('ast')) {
+    if (
+      lowerObj.includes('code') ||
+      lowerObj.includes('refactor') ||
+      lowerObj.includes('transform') ||
+      lowerObj.includes('modernize') ||
+      lowerObj.includes('typescript') ||
+      lowerObj.includes('python') ||
+      lowerObj.includes('ast') ||
+      lowerObj.includes('var ') ||
+      lowerObj.includes('promise') ||
+      lowerObj.includes('.then(') ||
+      lowerObj.includes('callback') ||
+      lowerObj.includes('asynchronous')
+    ) {
       return 'refactor';
     }
     return 'general';

@@ -1,15 +1,13 @@
 {
-  "executionId": "trace_1788340892640_ts7mt",
-  "localAttemptId": "attempt_1788340892648_684na",
-  "timestamp": "2026-09-02T09:21:32.640Z",
-  "executionMode": "test",
-  "decisionSource": "offline_driver",
-  "provider": "offline",
-  "modelTarget": "gemini-3.1-pro-preview",
-  "providerRequestId": null,
+  "executionId": "trace_1792005229546_nzap2",
+  "localAttemptId": "trace_1792005229546_nzap2",
+  "langfuseTraceId": "trace_1792005229546_nzap2",
+  "timestamp": "2026-10-14T19:13:49.546Z",
+  "executionMode": "offline",
   "isLive": false,
-  "userObjective": "Refactor code: fetch(\"/api/data\").then(res => res.json()).then(data => console.log(data));",
+  "providerRequestId": null,
   "status": "completed",
+  "userObjective": "Refactor code: fetch(\"/api/data\").then(res => res.json()).then(data => console.log(data));",
   "steps": [
     {
       "stepIndex": 1,
@@ -22,13 +20,13 @@
       },
       "isError": false,
       "observation": "{\n  \"status\": \"SUCCESS\",\n  \"isError\": false,\n  \"language\": \"typescript\",\n  \"codeRequirement\": \"Refactor code: fetch(\\\"/api/data\\\").then(res => res.json()).then(data => console.log(data));\",\n  \"refactoringNotes\": [\n    \"Generated type-safe typescript module template.\"\n  ],\n  \"refactoredCode\": \"// Requirement: Refactor code: fetch(\\\"/api/data\\\")Promise chainsres => res.json())Promise chainsdata => console.log(data));\\nexport async function executeRefactoredTask(inputPayload: string): Promise<{ success: boolean; data: string }> {\\n  const sanitized = inputPayload.trim();\\n  return { success: true, data: `Processed: ${sanitized}` };\\n}\"\n}",
-      "latencyMs": 3
+      "latencyMs": 2
     },
     {
       "stepIndex": 2,
       "thought": "Model issued finish decision after evidence gathering.",
       "actionType": "finish",
-      "latencyMs": 1
+      "latencyMs": 0
     }
   ],
   "observations": [
@@ -42,7 +40,7 @@
       },
       "resultContent": "{\n  \"status\": \"SUCCESS\",\n  \"isError\": false,\n  \"language\": \"typescript\",\n  \"codeRequirement\": \"Refactor code: fetch(\\\"/api/data\\\").then(res => res.json()).then(data => console.log(data));\",\n  \"refactoringNotes\": [\n    \"Generated type-safe typescript module template.\"\n  ],\n  \"refactoredCode\": \"// Requirement: Refactor code: fetch(\\\"/api/data\\\")Promise chainsres => res.json())Promise chainsdata => console.log(data));\\nexport async function executeRefactoredTask(inputPayload: string): Promise<{ success: boolean; data: string }> {\\n  const sanitized = inputPayload.trim();\\n  return { success: true, data: `Processed: ${sanitized}` };\\n}\"\n}",
       "isError": false,
-      "timestamp": 1788340892647
+      "timestamp": 1792005229549
     }
   ],
   "reflectionVerdict": {
@@ -80,7 +78,7 @@
     "[Observation O1] (refactor_code)"
   ],
   "metrics": {
-    "totalLatencyMs": 9,
+    "totalLatencyMs": 3,
     "totalTokens": 86,
     "observationCount": 1,
     "errorCount": 0

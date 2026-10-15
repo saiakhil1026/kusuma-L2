@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { sharedVectorDB } from '../src/engine/vectorStore';
 import { semanticCache } from '../src/engine/semanticCache';
 import { INITIAL_AGENTS } from '../src/engine/agentRegistry';
@@ -59,58 +58,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// JWT JWKS key set for Supabase token verification (C1: Real JWT Auth)
-const SUPABASE_JWKS_URL = process.env.SUPABASE_JWKS_URL;
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
-let jwksKeySet: ReturnType<typeof createRemoteJWKSet> | null = null;
-
-if (SUPABASE_JWKS_URL) {
-  try {
-    jwksKeySet = createRemoteJWKSet(new URL(SUPABASE_JWKS_URL));
-  } catch (err) {
-    console.warn('[Auth] Invalid SUPABASE_JWKS_URL, JWT verification disabled:', err);
-  }
-}
-
-// REST Authentication & Identity Middleware (C1: Genuine JWT Verification)
-app.use(async (req, _res, next) => {
-  const authHeader = req.headers.authorization;
-
-  if (authHeader && authHeader.startsWith('Bearer ') && jwksKeySet) {
-    const token = authHeader.substring(7);
-    try {
-      const { payload } = await jwtVerify(token, jwksKeySet, {
-        issuer: SUPABASE_URL ? `${SUPABASE_URL}/auth/v1` : undefined,
-      });
-
-      // Extract user ID from JWT 'sub' claim (Supabase auth.uid())
-      const userId = payload.sub;
-      if (!userId) {
-        throw new Error('JWT missing sub claim');
-      }
-
-      (req as any).user = {
-        id: userId,
-        role: (payload as any).role || 'authenticated',
-        email: (payload as any).email || null,
-        tokenExp: payload.exp,
-      };
-    } catch (err: any) {
-      // JWT verification failed — treat as unauthenticated
-      console.warn(`[Auth] JWT verification failed: ${err.message}`);
-      (req as any).user = { id: null, role: 'anonymous', authError: err.message };
-    }
-  } else if (authHeader && authHeader.startsWith('Bearer ') && !jwksKeySet) {
-    // JWKS not configured — log warning, assign anonymous
-    console.warn('[Auth] Bearer token provided but SUPABASE_JWKS_URL not configured. Cannot verify JWT.');
-    (req as any).user = { id: null, role: 'anonymous', authError: 'JWKS not configured' };
-  } else {
-    // No auth header — unauthenticated request
-    (req as any).user = { id: null, role: 'anonymous' };
-  }
-  next();
-});
-
 // Health Check Endpoint
 app.get('/api/health', async (_req, res) => {
   try {
@@ -120,7 +67,7 @@ app.get('/api/health', async (_req, res) => {
       framework: 'NexusMatrix Enterprise Multi-Modal Agent Orchestrator',
       mcpToolsCount: tools.length,
       vectorCount: sharedVectorDB.size(),
-      models: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.1-pro-preview'],
+      models: ['langfuse-default'],
       cacheHitRatioPct: semanticCache.getCacheHitRatio(),
       timestamp: Date.now(),
       persistenceMode: activeVectorRepository.mode,
@@ -157,7 +104,6 @@ app.post('/api/agent-loop/run', async (req, res) => {
   try {
     const validated = AgentLoopRunRequestSchema.parse(req.body);
     const result = await dynamicAgentRunner.runDynamicLoop(validated.objective, {
-      model: validated.model as any,
       maxSteps: validated.maxSteps,
     });
     res.json(result);
@@ -268,10 +214,9 @@ app.post('/api/vectors/clear', (_req, res) => {
 // Execute Standalone Multi-Modal Agent API
 app.post('/api/agents/execute', async (req, res) => {
   try {
-    const { agentId, model, prompt, imagePayload } = req.body;
+    const { agentId, prompt, imagePayload } = req.body;
     const result = await executeAgentInference(
       agentId,
-      model,
       String(prompt || ''),
       undefined,
       imagePayload

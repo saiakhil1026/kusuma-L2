@@ -18,13 +18,13 @@ describe('Empirical Benchmark Dataset Evaluation Suite (Gates 7 & 8)', () => {
     expect(offline.avgLatencyMs).toBeGreaterThan(0);
   });
 
-  it('should separate live and offline metrics without merging fake live scores', async () => {
+  it('should separate langfuse and offline metrics without merging fake live scores', async () => {
     const report = await frameworkEvaluator.runFullEvaluation();
 
-    // In test environment, decisionSource is offline_driver
-    expect(report.offlineMetrics.decisionSource).toBe('offline_driver');
-    expect(report.liveMetrics).toBeNull(); // No live Gemini run in offline vitest environment
-    expect(report.summaryMessage).toContain('Live Gemini evaluation not yet executed');
+    // In test environment, runMode is offline_driver
+    expect(report.offlineMetrics.runMode).toBe('offline');
+    expect(report.langfuseMetrics).toBeNull(); // No live Langfuse run in offline vitest environment
+    expect(report.summaryMessage).toContain('Langfuse tracing not yet executed');
   });
 
   it('should calculate empirical precision and recall or return "Not measured" if insufficient data', async () => {

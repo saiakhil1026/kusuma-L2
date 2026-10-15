@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, Activity, Play, Upload, Sparkles } from 'lucide-react';
-import type { IMultiModalAgent, AgentFeedbackReport, AgentId, ModelName } from '../types';
+import type { IMultiModalAgent, AgentFeedbackReport, AgentId } from '../types';
 import { apiClient } from '../services/apiClient';
 
 export const AgentMeshDashboard: React.FC = () => {
   const [agents, setAgents] = useState<IMultiModalAgent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId>('code');
   const [sandboxPrompt, setSandboxPrompt] = useState('Generate a type-safe TypeScript function for 768-D vector dot product with zero-allocation memory loop.');
-  const [sandboxModel, setSandboxModel] = useState<ModelName>('gemini-3.1-pro-preview');
   const [sandboxImage, setSandboxImage] = useState<string | undefined>(undefined);
   const [isExecuting, setIsExecuting] = useState(false);
   const [sandboxOutput, setSandboxOutput] = useState<string | null>(null);
@@ -39,7 +38,7 @@ export const AgentMeshDashboard: React.FC = () => {
         status: 'rerouted',
         confidence: 0.94,
         alerts: ['[Demo Fixture] Complex async static analysis requires deeper logic proof.'],
-        suggestedAction: 'Elevate to Gemini 3.1 Pro for deep logic verification',
+        suggestedAction: 'Elevate to Langfuse-traced inference for deep logic verification',
         timestamp: Date.now() - 90000,
         latencyMs: 310,
         tokensUsed: 420,
@@ -80,7 +79,7 @@ export const AgentMeshDashboard: React.FC = () => {
     try {
       const result = await apiClient.executeAgent(
         selectedAgentId,
-        sandboxModel,
+        'langfuse-default',
         sandboxPrompt,
         sandboxImage
       );
@@ -105,7 +104,7 @@ export const AgentMeshDashboard: React.FC = () => {
         agentName: agent?.name || selectedAgentId,
         status: 'success',
         confidence: empiricalConfidence,
-        alerts: [result.isRealApi ? '[Live Event] Executed via server Express API & Gemini SDK.' : '[Local Driver] Executed via server dynamic model decision driver.'],
+        alerts: [result.isRealApi ? '[Live Event] Executed via server Express API & Langfuse tracing.' : '[Local Driver] Executed via server dynamic model decision driver.'],
         suggestedAction: 'Deliverable ready for vector memory indexing',
         timestamp: Date.now(),
         latencyMs: result.latencyMs,
@@ -140,8 +139,8 @@ export const AgentMeshDashboard: React.FC = () => {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
-      
-      {/* Capability Registry Matrix (7 Agents Grid) */}
+
+      {/* Capability Registry Matrix (10 Autonomous Agents Grid) */}
       <div className="rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
@@ -149,31 +148,31 @@ export const AgentMeshDashboard: React.FC = () => {
               <Cpu className="h-5 w-5 text-purple-400" />
             </div>
             <div>
-              <h2 className="font-mono text-base font-bold text-white flex items-center space-x-2">
-                <span>Multi-Modal Agent Capability Registry Matrix</span>
-                <span className="rounded-md bg-purple-950 px-2 py-0.5 text-[10px] text-purple-300 border border-purple-500/30">
-                  HTTP REST Connected
+              <div className="flex items-center space-x-2">
+                <h2 className="font-mono text-base font-bold text-white">
+                  Multi-Modal Agent Capability Registry
+                </h2>
+                <span className="rounded-full bg-purple-950 px-2.5 py-0.5 text-xs font-mono font-semibold text-purple-300 border border-purple-500/30">
+                  10 Autonomous Agents Active
                 </span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Model-multiplexed AI agents mapped to specialized tasks across Text, Vision, Code, Logic, and Zero-Trust Guardrails.
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Model-multiplexed AI agents mapped to specialized tasks across Research, Execution, Debugging, Code, Logic, Vision, and Zero-Trust Guardrails.
               </p>
             </div>
           </div>
         </div>
 
-        {/* 7 Agents Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+        {/* 10 Agents Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 pt-2">
           {agents.map((agent) => {
             const isSelected = selectedAgentId === agent.id;
-            const isFlash = agent.model === 'gemini-3.7-flash';
 
             return (
               <div
                 key={agent.id}
                 onClick={() => {
                   setSelectedAgentId(agent.id);
-                  setSandboxModel(agent.model);
                 }}
                 className={`group rounded-xl p-4 border transition-all duration-200 cursor-pointer ${
                   isSelected
@@ -184,12 +183,10 @@ export const AgentMeshDashboard: React.FC = () => {
                 <div className="flex items-center justify-between mb-2">
                   <span
                     className={`rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold border ${
-                      isFlash
-                        ? 'bg-cyan-950 text-cyan-300 border-cyan-500/40'
-                        : 'bg-purple-950 text-purple-300 border-purple-500/40'
+                      'bg-cyan-950 text-cyan-300 border-cyan-500/40'
                     }`}
                   >
-                    {agent.model}
+                    langfuse-default
                   </span>
 
                   <span className="flex items-center space-x-1 font-mono text-[10px]">
@@ -229,7 +226,7 @@ export const AgentMeshDashboard: React.FC = () => {
 
       {/* Main Sandbox & Live Telemetry Stream */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* Interactive Multi-Modal Sandbox (6 cols) */}
         <div className="lg:col-span-6 rounded-2xl border border-indigo-900/40 bg-nexus-950/80 p-6 backdrop-blur-xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-indigo-950 pb-3">
@@ -246,19 +243,7 @@ export const AgentMeshDashboard: React.FC = () => {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 font-mono text-xs">
-            <div>
-              <label className="block text-slate-400 mb-1">Target Model</label>
-              <select
-                value={sandboxModel}
-                onChange={(e) => setSandboxModel(e.target.value as ModelName)}
-                className="w-full rounded-xl border border-indigo-500/30 bg-nexus-900 px-3 py-2 text-cyan-300 focus:outline-none"
-              >
-                <option value="gemini-3.7-flash">gemini-3.7-flash (Fast Multi-Modal)</option>
-                <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview (Deep Code/Logic)</option>
-              </select>
-            </div>
-
+          <div className="grid grid-cols-1 gap-3 font-mono text-xs">
             <div>
               <label className="block text-slate-400 mb-1">Vision Input Context</label>
               <label className="flex items-center justify-center space-x-1.5 cursor-pointer rounded-xl border border-indigo-500/30 bg-nexus-900 py-2 text-cyan-300 hover:bg-nexus-800">

@@ -1,8 +1,7 @@
-import type { AgentLoopExecutionResult } from '../engine/agentLoop';
 import type { ComprehensiveEvaluationReport } from '../engine/evaluationEngine';
-import type { VectorItem, IMultiModalAgent, AgentId, ModelName, DAGGraph } from '../types';
+import type { VectorItem, IMultiModalAgent, AgentId, DAGGraph } from '../types';
 
-const API_BASE_URL = typeof window !== 'undefined' && window.location ? (window.location.origin.includes('5173') ? 'http://localhost:3001' : '') : '';
+const API_BASE_URL = typeof window !== 'undefined' && window.location ? (window.location.origin.includes('5173') ? 'http://localhost:3002' : '') : '';
 
 export interface HealthStats {
   status: string;
@@ -27,18 +26,18 @@ export const apiClient = {
         framework: 'NexusMatrix Agent Framework',
         mcpToolsCount: 5,
         vectorCount: 12,
-        models: ['gemini-3.7-flash', 'gemini-3.1-pro-preview'],
+        models: ['langfuse-default'],
         cacheHitRatioPct: 88.5,
         timestamp: Date.now(),
       };
     }
   },
 
-  async runAgentLoop(objective: string, model: ModelName = 'gemini-3.7-flash', maxSteps = 10): Promise<AgentLoopExecutionResult> {
+  async runAgentLoop(objective: string, _model?: string, maxSteps = 10): Promise<any> {
     const res = await fetch(`${API_BASE_URL}/api/agent-loop/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ objective, model, maxSteps }),
+      body: JSON.stringify({ objective, maxSteps }),
     });
     if (!res.ok) {
       const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
@@ -61,14 +60,14 @@ export const apiClient = {
 
   async executeAgent(
     agentId: AgentId,
-    model: ModelName,
+    _model: string,
     prompt: string,
     imagePayload?: string
   ): Promise<{ text: string; tokens: number; latencyMs: number; isRealApi: boolean }> {
     const res = await fetch(`${API_BASE_URL}/api/agents/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, model, prompt, imagePayload }),
+      body: JSON.stringify({ agentId, prompt, imagePayload }),
     });
     if (!res.ok) {
       const errorBody = await res.json().catch(() => ({ error: 'Unknown server error' }));
@@ -85,6 +84,30 @@ export const apiClient = {
     } catch {
       return [];
     }
+  },
+
+  async getMcpTools(): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/mcp/tools`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      console.warn('Failed to fetch MCP tools:', err);
+      return [];
+    }
+  },
+
+  async callMcpTool(toolName: string, args: Record<string, any>): Promise<any> {
+    const res = await fetch(`${API_BASE_URL}/api/mcp/call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toolName, arguments: args }),
+    });
+    if (!res.ok) {
+      const errorBody = await res.json().catch(() => ({ error: 'Tool execution failed' }));
+      throw new Error(errorBody.error || `HTTP ${res.status}`);
+    }
+    return await res.json();
   },
 
   async getAllVectors(): Promise<VectorItem[]> {

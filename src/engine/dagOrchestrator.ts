@@ -1,4 +1,4 @@
-import type { DAGGraph, DAGNode, AgentFeedbackReport } from '../types';
+import type { DAGGraph, DAGNode, AgentFeedbackReport, AgentId } from '../types';
 import { agentRegistry } from './agentRegistry';
 import { sharedVectorDB } from './vectorStore';
 import { semanticCache } from './semanticCache';
@@ -28,65 +28,142 @@ export const PRESET_OBJECTIVES = [
 ];
 
 export function createGraphForObjective(objectiveText: string): DAGGraph {
-  const isSecurity = objectiveText.toLowerCase().includes('security') || objectiveText.toLowerCase().includes('audit');
-  const isLogic = objectiveText.toLowerCase().includes('vector') || objectiveText.toLowerCase().includes('logic');
+  const lower = objectiveText.toLowerCase();
+  const isResearch = lower.includes('search') || lower.includes('research') || lower.includes('fact') || lower.includes('ground');
+  const isCode = lower.includes('code') || lower.includes('typescript') || lower.includes('refactor') || lower.includes('function') || lower.includes('python');
+  const isSecurity = lower.includes('security') || lower.includes('audit') || lower.includes('zero_trust') || lower.includes('safe');
+  const isVision = lower.includes('vision') || lower.includes('diagram') || lower.includes('wireframe') || lower.includes('image');
+  const isLogic = lower.includes('logic') || lower.includes('math') || lower.includes('proof') || lower.includes('vector');
+  const isDebug = lower.includes('debug') || lower.includes('error') || lower.includes('triage') || lower.includes('failure');
 
-  const nodes: DAGNode[] = [
-    {
-      id: 'node-1',
-      title: 'Master Prompt & Graph Decomposition',
-      agentId: 'orchestrator',
-      model: 'gemini-3.7-flash',
-      inputDescription: `Objective: "${objectiveText}"`,
-      dependencies: [],
-      status: 'idle',
-    },
-    {
-      id: 'node-2',
-      title: 'High-Density Document Compression',
-      agentId: 'summarizer',
-      model: 'gemini-3.7-flash',
-      inputDescription: 'Extract core system entities & compress specifications',
+  const nodes: DAGNode[] = [];
+  let prevNodeId = 'node-1';
+
+  // 1. Root Orchestrator
+  nodes.push({
+    id: 'node-1',
+    title: 'Topological Goal Planning & Agent Delegation',
+    agentId: 'orchestrator' as AgentId,
+    inputDescription: `Objective: "${objectiveText}"`,
+    dependencies: [],
+    status: 'idle',
+  });
+
+  // 2. Fact Grounding / Research
+  if (isResearch || (!isCode && !isVision && !isLogic)) {
+    const rId = `node-${nodes.length + 1}`;
+    nodes.push({
+      id: rId,
+      title: 'Empirical Web Search & Grounding',
+      agentId: 'researcher' as AgentId,
+      inputDescription: 'Search live knowledge base for verified citations',
       dependencies: ['node-1'],
       status: 'idle',
-    },
-    {
-      id: 'node-3',
-      title: isSecurity ? 'Visual Architecture Scene Analytics' : 'UI Spatial Wireframe Analytics',
-      agentId: 'vision',
-      model: 'gemini-3.7-flash',
+    });
+    prevNodeId = rId;
+  }
+
+  // 3. Document / Spec Summarization
+  if (lower.length > 50 || lower.includes('summar') || lower.includes('doc')) {
+    const sId = `node-${nodes.length + 1}`;
+    nodes.push({
+      id: sId,
+      title: 'High-Density Spec Compression',
+      agentId: 'summarizer' as AgentId,
+      inputDescription: 'Extract core system entities & specifications',
+      dependencies: ['node-1'],
+      status: 'idle',
+    });
+    prevNodeId = sId;
+  }
+
+  // 4. Vision & Layout Parsing
+  if (isVision) {
+    const vId = `node-${nodes.length + 1}`;
+    nodes.push({
+      id: vId,
+      title: 'Visual Spatial Diagram & Wireframe Analytics',
+      agentId: 'vision' as AgentId,
       inputDescription: 'Parse bounding tags & visual layout diagrams',
       dependencies: ['node-1'],
       status: 'idle',
-    },
-    {
-      id: 'node-4',
-      title: isLogic ? '768D Vector Space & Logic Proof' : 'Production Code Refactor Synthesis',
-      agentId: isLogic ? 'logic' : 'code',
-      model: 'gemini-3.1-pro-preview',
-      inputDescription: 'Synthesize verified TypeScript/Python implementations',
-      dependencies: ['node-2', 'node-3'],
+    });
+    prevNodeId = vId;
+  }
+
+  // 5. Code Refactor / Implementation + Sandbox Execution
+  if (isCode) {
+    const cId = `node-${nodes.length + 1}`;
+    nodes.push({
+      id: cId,
+      title: 'AST Code Transformation & Refactoring',
+      agentId: 'code' as AgentId,
+      inputDescription: 'Synthesize verified TypeScript implementations via AST Transformer',
+      dependencies: [nodes[0].id],
       status: 'idle',
-    },
-    {
-      id: 'node-5',
-      title: 'Zero-Trust Safety & Schema Validation',
-      agentId: 'guardrail',
-      model: 'gemini-3.7-flash',
-      inputDescription: 'Verify type safety, sanitize outputs & enforce security bounds',
-      dependencies: ['node-4'],
+    });
+
+    const eId = `node-${nodes.length + 1}`;
+    nodes.push({
+      id: eId,
+      title: 'Runtime Sandbox Code Execution',
+      agentId: 'executor' as AgentId,
+      inputDescription: 'Execute synthesized code in sandbox and verify exit code',
+      dependencies: [cId],
       status: 'idle',
-    },
-    {
-      id: 'node-6',
-      title: 'Executive Deliverables Consolidation',
-      agentId: 'synthesizer',
-      model: 'gemini-3.7-flash',
-      inputDescription: 'Merge multi-agent outputs & vector memory into final report',
-      dependencies: ['node-5'],
+    });
+    prevNodeId = eId;
+  }
+
+  // 6. Logic & Proof Matrix
+  if (isLogic) {
+    const lId = `node-${nodes.length + 1}`;
+    nodes.push({
+      id: lId,
+      title: '768D Vector Space & Logic Proof',
+      agentId: 'logic' as AgentId,
+      inputDescription: 'Validate cosine distance mathematical bounds',
+      dependencies: [nodes[0].id],
       status: 'idle',
-    },
-  ];
+    });
+    prevNodeId = lId;
+  }
+
+  // 7. Error Triage & Debugging
+  if (isDebug) {
+    const dId = `node-${nodes.length + 1}`;
+    nodes.push({
+      id: dId,
+      title: 'Error Trace Diagnosis & Defect Triage',
+      agentId: 'debugger' as AgentId,
+      inputDescription: 'Isolate error root cause and verify recovery plan',
+      dependencies: [nodes[0].id],
+      status: 'idle',
+    });
+    prevNodeId = dId;
+  }
+
+  // 8. Zero-Trust Guardrail
+  const gId = `node-${nodes.length + 1}`;
+  nodes.push({
+    id: gId,
+    title: isSecurity ? 'Zero-Trust Security & Vulnerability Audit' : 'Output Sanitization & Schema Validation',
+    agentId: 'guardrail' as AgentId,
+    inputDescription: 'Verify type safety, sanitize outputs & enforce security bounds',
+    dependencies: [prevNodeId],
+    status: 'idle',
+  });
+
+  // 9. Executive Synthesizer Final Delivery
+  const finalId = `node-${nodes.length + 1}`;
+  nodes.push({
+    id: finalId,
+    title: 'Executive Deliverables Consolidation',
+    agentId: 'synthesizer' as AgentId,
+    inputDescription: 'Merge multi-agent outputs & vector memory into final grounded deliverable',
+    dependencies: [gId],
+    status: 'idle',
+  });
 
   return {
     id: `graph_${Date.now()}`,
@@ -206,7 +283,6 @@ export class DAGOrchestratorRunner {
 
       const inference = await executeAgentInference(
         node.agentId,
-        node.model,
         node.inputDescription,
         prereqContext,
         node.agentId === 'vision' ? imagePayload : undefined
@@ -260,7 +336,7 @@ export class DAGOrchestratorRunner {
       suggestedAction: cacheResult.hit
         ? 'Vector memory context verified.'
         : node.agentId === 'guardrail'
-        ? 'Elevate to Gemini 3.1 Pro for deep audit'
+        ? 'Elevate to Langfuse-traced inference for deep audit'
         : 'Trigger RAG context enrichment',
       timestamp: Date.now(),
       latencyMs,

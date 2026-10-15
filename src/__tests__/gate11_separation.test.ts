@@ -44,18 +44,18 @@ describe('Gate 11 — Frontend / Server Architectural Separation Suite', () => {
     });
   });
 
-  // Test C — Gemini provider is server-side only
-  it('Test C: GoogleGenAI provider instantiation must only exist in server execution modules', () => {
+  // Test C — Langfuse provider is server-side only
+  it('Test C: Langfuse provider instantiation must only exist in server execution modules', () => {
     const geminiClientPath = path.join(process.cwd(), 'src', 'engine', 'geminiClient.ts');
     const content = fs.readFileSync(geminiClientPath, 'utf-8');
 
     expect(content).not.toContain('VITE_GEMINI_API_KEY');
     expect(content).not.toContain('import.meta.env.VITE_GEMINI');
-    expect(content).toContain('process.env.GEMINI_API_KEY');
+    expect(content).toContain('process.env.LANGFUSE_SECRET_KEY');
   });
 
   // Test D — API key is not persisted in browser storage
-  it('Test D: Application source code must not store or persist Gemini API keys in localStorage or sessionStorage', () => {
+  it('Test D: Application source code must not store or persist API keys in localStorage or sessionStorage', () => {
     const componentsDir = path.join(process.cwd(), 'src', 'components');
 
     function checkDirRecursively(dir: string) {

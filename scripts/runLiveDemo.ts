@@ -5,34 +5,32 @@ dotenv.config();
 
 async function runLiveDemo() {
   console.log('====================================================');
-  console.log('NexusMatrix — Live Gemini Model MCP Agent Execution');
+  console.log('NexusMatrix — Langfuse-Traced MCP Agent Execution');
   console.log('====================================================\n');
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.error('❌ ERROR: Missing GEMINI_API_KEY environment variable.');
-    console.error('Please set GEMINI_API_KEY in your environment or .env file before running demo:live.');
-    console.error('Example: GEMINI_API_KEY="your_api_key" npm run demo:live\n');
+  const langfuseKey = process.env.LANGFUSE_SECRET_KEY;
+  if (!langfuseKey) {
+    console.error('❌ ERROR: Missing LANGFUSE_SECRET_KEY environment variable.');
+    console.error('Please set LANGFUSE_SECRET_KEY in your environment or .env file before running demo:live.');
+    console.error('Example: LANGFUSE_SECRET_KEY="your_key" npm run demo:live\n');
     process.exit(1);
   }
 
-  console.log('🔑 Environment GEMINI_API_KEY detected.');
-  console.log('🚀 Executing dynamic agent loop via live Google Gemini provider...\n');
+  console.log('🔑 Environment LANGFUSE_SECRET_KEY detected.');
+  console.log('🚀 Executing dynamic agent loop via Langfuse observability...\n');
 
   try {
     const objective = 'Perform security zero-trust audit and retrieve vector memory for microservice authentication module.';
     const result = await dynamicAgentRunner.runDynamicLoop(objective, {
-      model: 'gemini-3.7-flash',
       maxSteps: 6,
+      forceOffline: false,
     });
 
     console.log('\n====================================================');
     console.log('EXECUTION PROVENANCE & SUMMARY AUDIT:');
     console.log('====================================================');
     console.log(`Execution ID:        ${result.id}`);
-    console.log(`Decision Source:     ${result.decisionSource}`);
-    console.log(`Provider Name:       ${result.provider}`);
-    console.log(`Model Target:        ${result.modelTarget}`);
+    console.log(`Langfuse Trace ID:   ${result.langfuseTraceId || 'N/A'}`);
     console.log(`Is Live API:         ${result.isLive}`);
     console.log(`Final Status:        ${result.status}`);
     console.log(`Total Latency:       ${result.totalLatencyMs} ms`);

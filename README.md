@@ -1,6 +1,6 @@
 # NexusMatrix ⚡ Enterprise Multi-Modal MCP Agent Orchestrator
 
-**NexusMatrix** is an enterprise-grade AI agent orchestration framework featuring genuine model-mediated control flow, Model Context Protocol (MCP) transport integration via `@modelcontextprotocol/sdk`, binary image buffer visual decoding, TypeScript Compiler API AST refactoring, task-derived evidence reflection, claim-to-observation semantic grounding, held-out benchmark dataset evaluation, RLS tenant isolation, and tenant-aware Supabase vector persistence.
+**NexusMatrix** is an enterprise-grade AI agent orchestration framework featuring genuine model-mediated control flow, Model Context Protocol (MCP) transport integration via `@modelcontextprotocol/sdk`, binary image buffer visual decoding, TypeScript Compiler API AST refactoring, task-derived evidence reflection, claim-to-observation semantic grounding, held-out benchmark dataset evaluation, tenant isolation, and Qdrant vector persistence.
 
 ---
 
@@ -8,12 +8,12 @@
 
 | Capability | Verification Status | Implementation Detail |
 | :--- | :--- | :--- |
-| **Model Provenance** | **Verified** | `localAttemptId` separated from `providerRequestId`; never manufactures provider request IDs when offline or rate-limited. |
+| **Model Provenance** | **Verified** | Langfuse trace metadata with `langfuseTraceId`; never manufactures provider request IDs when offline or rate-limited. |
 | **Model-Mediated MCP Loop** | **Verified** | Dynamic loop over `@modelcontextprotocol/sdk` (`vector_search`, `store_memory`, `refactor_code`, `zero_trust_audit`, `parse_vision_tags`). |
 | **Binary Image Decoding** | **Verified** | Real binary buffer parsing for PNG, JPEG, and WebP headers; computes true dimensions, Shannon byte entropy, and pixel luminance. |
 | **AST Code Refactoring** | **Verified** | Real TypeScript Compiler API (`ts.createSourceFile`, AST Transformers, Printer) for `var` to `const` and `.then()` to `async/await`. |
-| **Tenant-Aware Supabase Persistence** | **Verified** | Production tools depend on `VectorRepository` (`SupabaseVectorRepository` / `LocalVectorRepository`), awaiting writes and invoking `match_nexus_vectors` RPC. |
-| **Auth & RLS Tenancy** | **Verified** | Express authentication middleware derives `owner_id` server-side; PostgreSQL RLS policies enforce tenant isolation with `WITH CHECK` clauses and least-privilege `REVOKE`s. |
+| **Tenant-Aware Qdrant Persistence** | **Verified** | Production tools depend on `VectorRepository` (`QdrantVectorRepository` / `LocalVectorRepository`), awaiting writes and querying vector points. |
+| **Auth & Tenancy** | **Verified** | Express authentication middleware derives `owner_id` server-side; enforces tenant isolation and least-privilege access. |
 | **Authoritative Claim Grounding** | **Verified** | Evaluates claim-level semantic support and contradiction; rejects ungrounded or contradicted answers and updates run completion status. |
 | **Reflection Safeguards** | **Verified** | Reflection steps execute inside common step executor obeying global `maxSteps` limits without converting failures to successes. |
 | **Held-Out Benchmark Evaluation** | **Verified** | Multilabel classification tool selection metrics (TP, FP, FN, Precision, Recall, F1), answer property validation, and grounding requirements over held-out dataset `v2.0.0`. |
@@ -39,8 +39,8 @@ npm run build
 # 5. Generate Curated Execution Traces & Validate Scenarios
 npm run traces:generate
 
-# 6. Run Live Gemini Model Execution Evidence Demo (requires GEMINI_API_KEY)
-GEMINI_API_KEY="your_key" npm run demo:live
+# 6. Run Live Langfuse Observability Model Execution Evidence Demo
+npm run demo:live
 
 # 7. Start Express Server & Frontend App
 npm run server
